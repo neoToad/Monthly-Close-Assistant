@@ -1,0 +1,8 @@
+# Monthly Close Assistant — Python dependencies (top-level)
+# Install into the project virtualenv:  pip install -r requirements.txt
+Django==6.0.6
+python-decouple==3.8
+django-htmx==1.27.0
+psycopg[binary]==3.3.4
+python-quickbooks==0.9.12
+intuit-oauth==1.2.6
