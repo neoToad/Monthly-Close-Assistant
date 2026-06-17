@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from django.core.validators import RegexValidator
 from django.db import models
+from django.utils import timezone
 
 
 class SourceType(models.TextChoices):
@@ -191,3 +192,52 @@ class CloseSummary(models.Model):
 
     def __str__(self) -> str:
         return f"Close summary {self.month} ({self.status})"
+
+
+class QBToken(models.Model):
+    """Encrypted QuickBooks OAuth tokens, one row per realm (company).
+
+    Added in Prompt 3 so the OAuth callback and the ``sync_quickbooks`` command can
+    persist access/refresh tokens at rest and reload them later. The token values
+    are stored Fernet-encrypted (see ``core.quickbooks.tokens``); the model exposes
+    plaintext accessors only through ``get_access_token`` / ``get_refresh_token``.
+    """
+
+    realm_id = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        help_text="QuickBooks company/realm id (the sandbox realm for this build).",
+    )
+    access_token_encrypted = models.TextField(help_text="Fernet-encrypted access token.")
+    refresh_token_encrypted = models.TextField(help_text="Fernet-encrypted refresh token.")
+    access_token_expires_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the access token expires."
+    )
+    refresh_token_expires_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the (long-lived) refresh token expires."
+    )
+    last_refreshed = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self) -> str:
+        return f"QBToken realm={self.realm_id} (refreshed {self.last_refreshed})"
+
+    def get_access_token(self) -> str:
+        from core.quickbooks.tokens import decrypt_value
+
+        return decrypt_value(self.access_token_encrypted)
+
+    def get_refresh_token(self) -> str:
+        from core.quickbooks.tokens import decrypt_value
+
+        return decrypt_value(self.refresh_token_encrypted)
+
+    def is_access_token_expired(self) -> bool:
+        if self.access_token_expires_at is None:
+            return True
+        return self.access_token_expires_at <= timezone.now()

@@ -130,6 +130,11 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
+# QuickBooks OAuth tokens are encrypted at rest with a Fernet symmetric key. When
+# unset, tokens pass through in plaintext (dev only — a warning is emitted). Prompt 3.
+QB_TOKEN_ENCRYPTION_KEY = config("QB_TOKEN_ENCRYPTION_KEY", default="")
+
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 

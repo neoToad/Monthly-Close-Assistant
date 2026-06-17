@@ -1,0 +1,207 @@
+"""Tests for the QuickBooks integration service (Prompt 3 — QuickBooks OAuth + Pull).
+
+Covers the pure, mockable boundaries of the sync pipeline:
+
+* token encryption-at-rest helpers (roundtrip + plaintext dev fallback).
+* ``normalize_record`` turning QuickBooks Purchase / Deposit / JournalEntry objects
+  into the internal ``Transaction`` field dict (and skipping records without an id/date).
+* ``sync_transactions`` orchestrating pull → normalize → ``get_or_create`` (idempotent
+  skip-existing by ``qb_transaction_id``) and reporting counts.
+* ``refresh_tokens`` driving an ``AuthClient`` refresh and returning the new tokens.
+
+No live QuickBooks sandbox is contacted: ``pull_raw_records`` is patched everywhere.
+"""
+from __future__ import annotations
+
+import datetime as dt
+from decimal import Decimal
+from types import SimpleNamespace
+from unittest import mock
+
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
+
+from core.quickbooks import client as qb_client
+from core.quickbooks.tokens import decrypt_value, encrypt_value
+
+
+def _ref(name: str = "", value: str = "") -> SimpleNamespace:
+    """A stand-in for the python-quickbooks ``Ref`` object (has .name/.value)."""
+    return SimpleNamespace(name=name, value=value)
+
+
+def _purchase(*, id_: str = "1", date: str = "2026-05-10", amount="123.45",
+              vendor="Acme Supplies", account="Checking") -> SimpleNamespace:
+    return SimpleNamespace(
+        Id=id_,
+        TxnDate=date,
+        TotalAmt=amount,
+        EntityRef=_ref(name=vendor),
+        AccountRef=_ref(name=account),
+        qbo_object_name="Purchase",
+    )
+
+
+def _deposit(*, id_: str = "2", date: str = "2026-05-11", amount="500.00",
+             account="Operating Bank") -> SimpleNamespace:
+    return SimpleNamespace(
+        Id=id_,
+        TxnDate=date,
+        TotalAmt=amount,
+        DepositToAccountRef=_ref(name=account),
+        qbo_object_name="Deposit",
+    )
+
+
+def _journal_entry(*, id_: str = "3", date: str = "2026-05-12", amount="75.00",
+                   debit_account="Depreciation Expense") -> SimpleNamespace:
+    line = SimpleNamespace(
+        Amount=amount,
+        PostingType="Debit",
+        JournalEntryLineDetail=SimpleNamespace(AccountRef=_ref(name=debit_account)),
+    )
+    return SimpleNamespace(
+        Id=id_,
+        TxnDate=date,
+        TotalAmt=amount,
+        Line=[line],
+        qbo_object_name="JournalEntry",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Token encryption at rest
+# ---------------------------------------------------------------------------
+
+
+class TokenEncryptionTests(SimpleTestCase):
+    """Fernet-backed encryption with a plaintext dev fallback when no key is set."""
+
+    def test_plaintext_passthrough_when_no_key(self) -> None:
+        # With no encryption key configured, values pass through unchanged so
+        # local development works without provisioning a Fernet key.
+        with override_settings(QB_TOKEN_ENCRYPTION_KEY=""):
+            self.assertEqual(encrypt_value("abc"), "abc")
+            self.assertEqual(decrypt_value("abc"), "abc")
+
+    def test_roundtrip_with_key(self) -> None:
+        from cryptography.fernet import Fernet
+
+        key = Fernet.generate_key().decode()
+        with override_settings(QB_TOKEN_ENCRYPTION_KEY=key):
+            ciphertext = encrypt_value("a-secret-token")
+            self.assertNotEqual(ciphertext, "a-secret-token")
+            self.assertEqual(decrypt_value(ciphertext), "a-secret-token")
+
+    def test_ciphertext_differs_for_different_plaintexts(self) -> None:
+        from cryptography.fernet import Fernet
+
+        key = Fernet.generate_key().decode()
+        with override_settings(QB_TOKEN_ENCRYPTION_KEY=key):
+            self.assertNotEqual(encrypt_value("one"), encrypt_value("two"))
+
+
+# ---------------------------------------------------------------------------
+# normalize_record
+# ---------------------------------------------------------------------------
+
+
+class NormalizeRecordTests(SimpleTestCase):
+    def test_purchase_maps_vendor_amount_and_gl_account(self) -> None:
+        norm = qb_client.normalize_record(_purchase(), "Purchase")
+        self.assertEqual(norm["qb_transaction_id"], "1")
+        self.assertEqual(norm["date"], dt.date(2026, 5, 10))
+        self.assertEqual(norm["amount"], Decimal("123.45"))
+        self.assertEqual(norm["vendor"], "Acme Supplies")
+        self.assertEqual(norm["gl_account"], "Checking")
+        self.assertEqual(norm["source_type"], "Purchase")
+
+    def test_deposit_uses_deposit_account_as_gl(self) -> None:
+        norm = qb_client.normalize_record(_deposit(), "Deposit")
+        self.assertEqual(norm["qb_transaction_id"], "2")
+        self.assertEqual(norm["vendor"], "Deposit")
+        self.assertEqual(norm["gl_account"], "Operating Bank")
+        self.assertEqual(norm["source_type"], "Deposit")
+
+    def test_journal_entry_sums_debit_and_uses_first_debit_account(self) -> None:
+        norm = qb_client.normalize_record(_journal_entry(), "JournalEntry")
+        self.assertEqual(norm["qb_transaction_id"], "3")
+        self.assertEqual(norm["vendor"], "Journal Entry")
+        self.assertEqual(norm["gl_account"], "Depreciation Expense")
+        self.assertEqual(norm["amount"], Decimal("75.00"))
+        self.assertEqual(norm["source_type"], "JournalEntry")
+
+    def test_missing_id_is_skipped(self) -> None:
+        self.assertIsNone(qb_client.normalize_record(_purchase(id_=""), "Purchase"))
+
+    def test_missing_date_is_skipped(self) -> None:
+        self.assertIsNone(qb_client.normalize_record(_purchase(date=""), "Purchase"))
+
+
+# ---------------------------------------------------------------------------
+# sync_transactions (DB-backed; pull_raw_records patched)
+# ---------------------------------------------------------------------------
+
+
+class SyncTransactionsTests(TestCase):
+    def _raw(self) -> dict:
+        return {
+            "Purchase": [_purchase(), _purchase(id_="99", date="", amount="10.00")],
+            "Deposit": [_deposit()],
+            "JournalEntry": [_journal_entry()],
+        }
+
+    @mock.patch.object(qb_client, "pull_raw_records")
+    def test_creates_new_transactions(self, mock_pull) -> None:
+        from core.models import Transaction
+
+        mock_pull.return_value = self._raw()
+        result = qb_client.sync_transactions(qb_client=object())
+        # 3 valid records (Purchase x1, Deposit x1, JournalEntry x1) created;
+        # 1 invalid (empty date) skipped.
+        self.assertEqual(result["created"], 3)
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["per_type"]["Purchase"]["created"], 1)
+        self.assertEqual(result["per_type"]["Purchase"]["skipped"], 1)
+        self.assertEqual(result["per_type"]["Deposit"]["created"], 1)
+        self.assertEqual(result["per_type"]["JournalEntry"]["created"], 1)
+        self.assertEqual(Transaction.objects.count(), 3)
+
+    @mock.patch.object(qb_client, "pull_raw_records")
+    def test_second_run_is_idempotent(self, mock_pull) -> None:
+        from core.models import Transaction
+
+        mock_pull.return_value = self._raw()
+        qb_client.sync_transactions(qb_client=object())
+        second = qb_client.sync_transactions(qb_client=object())
+        # The 3 previously-created records are skipped; the 1 invalid record is
+        # skipped again; nothing new is created. DB unchanged.
+        self.assertEqual(second["created"], 0)
+        self.assertEqual(second["skipped"], 4)
+        self.assertEqual(Transaction.objects.count(), 3)
+
+
+# ---------------------------------------------------------------------------
+# refresh_tokens
+# ---------------------------------------------------------------------------
+
+
+class RefreshTokensTests(SimpleTestCase):
+    def test_refresh_drives_auth_client_and_returns_tokens(self) -> None:
+        auth_client = mock.MagicMock()
+        auth_client.refresh_token = "old-refresh"
+        # refresh() mutates the client in place (Intuit sets these attrs).
+        def fake_refresh(refresh_token=None):
+            auth_client.access_token = "new-access"
+            auth_client.refresh_token = "new-refresh"
+            auth_client.expires_in = 3600
+            auth_client.x_refresh_token_expires_in = 8700000
+        auth_client.refresh.side_effect = fake_refresh
+
+        result = qb_client.refresh_tokens(auth_client)
+        auth_client.refresh.assert_called_once()
+        self.assertEqual(result["access_token"], "new-access")
+        self.assertEqual(result["refresh_token"], "new-refresh")
+        # expiry datetimes are in the future.
+        self.assertGreater(result["access_token_expires_at"], timezone.now())
+        self.assertGreater(result["refresh_token_expires_at"], timezone.now())

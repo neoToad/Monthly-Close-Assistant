@@ -11,6 +11,7 @@ from core.models import (
     BankTransaction,
     CloseSummary,
     Flag,
+    QBToken,
     Transaction,
 )
 
@@ -43,3 +44,19 @@ class CloseSummaryAdmin(admin.ModelAdmin):
     list_display = ("month", "status", "created_at")
     list_filter = ("status",)
     search_fields = ("month", "summary_text", "reviewer_notes")
+
+
+@admin.register(QBToken)
+class QBTokenAdmin(admin.ModelAdmin):
+    """Read-only-ish view of the stored QuickBooks OAuth tokens.
+
+    The encrypted token fields are deliberately excluded from ``list_display`` and
+    ``fields`` so a reviewer never sees raw (or ciphertext) secrets in the admin.
+    """
+    list_display = ("realm_id", "last_refreshed", "access_token_expires_at", "updated_at")
+    list_filter = ("updated_at",)
+    search_fields = ("realm_id",)
+    fields = ("realm_id", "last_refreshed", "access_token_expires_at",
+              "refresh_token_expires_at", "created_at", "updated_at")
+    readonly_fields = ("realm_id", "last_refreshed", "access_token_expires_at",
+                        "refresh_token_expires_at", "created_at", "updated_at")

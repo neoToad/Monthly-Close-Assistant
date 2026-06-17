@@ -101,3 +101,57 @@ suite: 28 tests pass; the Postgres test DB is created/dropped by the runner.
 **Deviations:** None. The schema matches the spec; the choice sets for flag_type /
 severity / status anticipate the reconciliation (Prompt 7) and anomaly (Prompt 8)
 prompts that create Flags of those types.
+
+---
+
+## Step 3 — `feat(core): step 3 — QuickBooks OAuth 2.0 + sync_quickbooks command`
+
+Implemented the QuickBooks Online OAuth 2.0 authorization-code flow and a
+`sync_quickbooks` management command, test-first against **mocked** QuickBooks
+responses (no live sandbox credentials).
+
+- **OAuth start view** (`/quickbooks/oauth/start/`) — builds an Intuit `AuthClient`
+  from `QB_CLIENT_ID`/`QB_CLIENT_SECRET`/`QB_REDIRECT_URI`, generates a CSRF state,
+  stashes it in the session, and redirects to Intuit's authorize URL.
+- **OAuth callback view** (`/quickbooks/oauth/callback/`) — verifies the state,
+  exchanges the code for tokens, and persists them.
+- **Token-refresh helper** (`refresh_tokens`) — drives `AuthClient.refresh()` and
+  returns the new tokens with computed access/refresh expiry datetimes.
+- **`sync_quickbooks` command** — authenticates with the stored token, pulls
+  Purchase / Deposit / JournalEntry, normalizes each into `Transaction`, and skips
+  records already present (matched on `qb_transaction_id`).
+
+**TDD:** wrote `core/tests/test_quickbooks.py` (encryption roundtrip + plaintext
+fallback, per-type normalization, skip-on-missing-id/date, idempotent sync,
+token-refresh) and `core/tests/test_views.py` (OAuth start redirect + state,
+callback exchange/store, state mismatch, missing code, sync command happy path +
+no-token error) first; confirmed both modules failed to import for the right reason
+(`ModuleNotFoundError: core.quickbooks`), then implemented to green. Full suite:
+**46 tests pass**.
+
+**Improvements beyond the spec:**
+- DRY service split into `core/quickbooks/client.py` (OAuth, refresh, pull,
+  normalize, sync) and `core/quickbooks/tokens.py` (Fernet encrypt/decrypt + token
+  persistence) — suggested by the foundation prompt.
+- `QBToken` model stores access/refresh tokens **encrypted at rest** with a Fernet
+  key (`QB_TOKEN_ENCRYPTION_KEY` env), with a plaintext dev fallback that emits a
+  warning. Migration `core.0002_qbtoken`; admin excludes the token fields from view.
+- Idempotent sync keyed on the natural key `qb_transaction_id` (`get_or_create`),
+  with a per-type counts summary (`created`/`skipped`/`errors`/`per_type`).
+- Defensive normalization: tolerant date parsing, `Decimal(str(...))` for money,
+  best-effort `Ref.name`/`Ref.value` lookups, and skip (not crash) on records missing
+  an id or date.
+- `intuit-oauth` is imported via its `intuitlib` namespace (`intuitlib.client.AuthClient`,
+  `intuitlib.enums.Scopes`) — the package's `intuit_oauth` shim is broken on Python 3.14
+  (see project memory).
+- Intuit `environment` hardcoded to `"sandbox"` (matches
+  `quickbooks.client.Environments.SANDBOX == 'sandbox'`); `QB_ENVIRONMENT` is
+  formalized in Prompt 4.
+
+**Deviations:**
+- **Live sandbox pull NOT exercised** (no sandbox credentials available). The OAuth
+  flow and sync pipeline are fully implemented and unit-tested against mocked
+  QuickBooks responses; the live pull against the Intuit sandbox is deferred and
+  noted in `docs/TODO.md`. Per the foundation prompt's instruction, this is recorded
+  here explicitly.
+- Retry/backoff on QuickBooks API errors is deferred to Prompt 5.
