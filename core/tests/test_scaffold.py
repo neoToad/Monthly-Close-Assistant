@@ -55,7 +55,10 @@ class DatabaseConfigTests(SimpleTestCase):
         )
 
     def test_db_name_from_env(self) -> None:
-        self.assertEqual(settings.DATABASES["default"].get("NAME"), config("DB_NAME"))
+        # The test runner prefixes the DB name with "test_" when it creates the
+        # test database, so strip that to compare against the configured value.
+        name = settings.DATABASES["default"].get("NAME", "")
+        self.assertEqual(name.removeprefix("test_"), config("DB_NAME"))
 
     def test_db_user_from_env(self) -> None:
         self.assertEqual(settings.DATABASES["default"].get("USER"), config("DB_USER"))

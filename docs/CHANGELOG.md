@@ -60,3 +60,44 @@ right reasons (default sqlite engine, `core`/`django_htmx` absent from INSTALLED
   aborts `startproject <name> .` on a non-empty target directory.
 - Used psycopg3 (`psycopg[binary]`) instead of psycopg2; Django 6.0 supports it
   natively and it has Python 3.14 wheels.
+
+---
+
+## Step 2 — `feat(core): step 2 — Postgres schema: Transaction/BankTransaction/Flag/CloseSummary + admin`
+
+Added the four `core` models with field shapes per the spec:
+
+- **Transaction** — date, vendor, amount `DecimalField(12,2)`, category, gl_account,
+  `qb_transaction_id` (unique + indexed, the idempotent-sync natural key), source_type
+  (choices: Purchase / Deposit / JournalEntry).
+- **BankTransaction** — mirrors the Transaction shape, plus a nullable
+  `matched_transaction_id` FK → Transaction (`on_delete=SET_NULL`).
+- **Flag** — flag_type (reconciliation / anomaly), nullable FKs to Transaction and to
+  BankTransaction, reason `TextField`, severity (low/medium/high), status
+  (open/approved/rejected), created_at.
+- **CloseSummary** — month (YYYY-MM, unique), summary_text, status (draft/reviewed),
+  reviewer_notes, created_at.
+
+Wrote and applied migration `core.0001_initial`. Registered all four in Django admin.
+
+**TDD:** wrote `core/tests/test_models.py` (17 tests) first and confirmed it failed for
+the right reason (`ImportError` — models undefined), then implemented to green. Full
+suite: 28 tests pass; the Postgres test DB is created/dropped by the runner.
+
+**Improvements beyond the spec:**
+- `TextChoices` enums for source_type, flag_type, severity, Flag status, and
+  CloseSummary status (forward-compatible with the reconciliation/anomaly prompts).
+- Money stored as `DecimalField(max_digits=12, decimal_places=2)`, not float.
+- `help_text` on every meaningful field; class docstrings;
+  `from __future__ import annotations`.
+- `CloseSummary.month` validated with `RegexValidator(r"^\d{4}-\d{2}$")` + unique;
+  `verbose_name_plural` set.
+- Admin tuned for reviewers: `list_display`, `list_filter`, `search_fields`,
+  `date_hierarchy` (token fields excluded from QBToken admin in Step 3).
+- `__str__` on every model.
+- Hardened `test_scaffold.test_db_name_from_env` against the test runner's `test_` DB
+  name prefix (surfaced when the full suite first ran alongside the model TestCases).
+
+**Deviations:** None. The schema matches the spec; the choice sets for flag_type /
+severity / status anticipate the reconciliation (Prompt 7) and anomaly (Prompt 8)
+prompts that create Flags of those types.
