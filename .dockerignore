@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.venv
+*.pyc
+__pycache__/
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+staticfiles/
+media/
+postgres-data/
+close_pg_data/
+*.md
+!README.md

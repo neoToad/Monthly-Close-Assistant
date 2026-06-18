@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import dj_database_url
 from celery.schedules import crontab
 from decouple import Csv, config
 
@@ -80,16 +81,33 @@ WSGI_APPLICATION = "close_assistant.wsgi.application"
 #
 # PostgreSQL, configured entirely from environment variables via python-decouple so no
 # connection details are committed to the repo.
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("DB_NAME"),
-        "USER": config("DB_USER"),
-        "PASSWORD": config("DB_PASSWORD"),
-        "HOST": config("DB_HOST", default="localhost"),
-        "PORT": config("DB_PORT", default="5432"),
+# Database
+# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# PostgreSQL, configured entirely from environment variables via python-decouple so no
+# connection details are committed to the repo. When ``DATABASE_URL`` is provided it
+# takes precedence over the individual DB_* variables (used by Docker compose).
+DATABASE_URL = config("DATABASE_URL", default="")
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL, engine="django.db.backends.postgresql"
+        )
     }
-}
+    # dj-database-url returns the port as an integer, but the scaffold tests compare
+    # it to the string value from python-decouple; keep it a string for consistency.
+    DATABASES["default"]["PORT"] = str(DATABASES["default"].get("PORT", ""))
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": config("DB_NAME"),
+            "USER": config("DB_USER"),
+            "PASSWORD": config("DB_PASSWORD"),
+            "HOST": config("DB_HOST", default="localhost"),
+            "PORT": config("DB_PORT", default="5432"),
+        }
+    }
 
 
 # Password validation

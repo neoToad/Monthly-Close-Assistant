@@ -2,26 +2,22 @@
 
 ## Stage
 
-Build (Prompts 4–18) — IN PROGRESS. Prompt 14 complete; starting Prompt 15.
+Build (Prompts 4–18) — IN PROGRESS. Prompt 15 complete; starting Prompt 16.
 
 ## Current task
 
-Step 15 — Dockerize. Wrap the Django app, Postgres, and Redis in Docker Compose for
-local development and consistent CI. Add a `Dockerfile`, `docker-compose.yml`, and any
-supporting entrypoint scripts. Keep the test suite green inside the container context.
+Step 16 — CI/CD. Add a GitHub Actions workflow that lints, runs the full Django test
+suite inside Docker compose, and verifies the Docker image builds on every push and
+pull request to `feature/close-assistant-build` and `main`.
 
 ## Completion criteria
 
-- `Dockerfile` builds a production-ready Django image.
-- `docker-compose.yml` brings up:
-  - web app container (depends on db/redis)
-  - Postgres container (persistent volume)
-  - Redis container (for Celery broker/result backend)
-- App container runs migrations, collectstatic, and a development server (or gunicorn).
-- `python manage.py test` passes inside the container or against the composed stack.
-- `.env.example` updated with any new variables (e.g., `REDIS_URL`).
-- `docs/CURRENT_TASK.md` overwritten for Prompt 16, `docs/CHANGELOG.md` appended,
-  `docs/TODO.md` updated, and changes committed with the Prompt 15 commit message.
+- `.github/workflows/ci.yml` created.
+- Workflow triggers on push/PR to `feature/close-assistant-build` and `main`.
+- Steps: checkout, build Docker compose stack, run `python manage.py test` inside the
+  backend container, report results.
+- Keep `docs/CURRENT_TASK.md`, `docs/CHANGELOG.md`, `docs/TODO.md` updated.
+- Commit with the Prompt 16 message and push.
 
 ## Branch
 

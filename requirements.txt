@@ -2,6 +2,7 @@
 # Install into the project virtualenv:  pip install -r requirements.txt
 Django==6.0.6
 python-decouple==3.8
+dj-database-url==2.3.0
 django-htmx==1.27.0
 psycopg[binary]==3.3.4
 python-quickbooks==0.9.12
@@ -14,3 +15,4 @@ langgraph==1.2.5
 faker==40.23.0
 celery==5.6.3
 redis==8.0.0
+gunicorn==23.0.0

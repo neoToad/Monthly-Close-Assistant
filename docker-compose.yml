@@ -1,0 +1,118 @@
+# Monthly Close Assistant — local Docker Compose stack (Prompt 15).
+# Brings up Postgres, Redis, the Django web app, and Celery worker/beat containers.
+# Copy `.env.example` to `.env` and customize values before running:
+#   docker compose up --build
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: close_assistant
+      POSTGRES_USER: close_app
+      POSTGRES_PASSWORD: close_dev_pw
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: .
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-docker-dev-key}
+      - DEBUG=${DEBUG:-True}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,web}
+      - DATABASE_URL=postgres://close_app:close_dev_pw@db:5432/close_assistant
+      - DB_NAME=close_assistant
+      - DB_USER=close_app
+      - DB_PASSWORD=close_dev_pw
+      - DB_HOST=db
+      - DB_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-False}
+      - QB_ENVIRONMENT=${QB_ENVIRONMENT:-sandbox}
+      - QB_TOKEN_REFRESH_BUFFER_MINUTES=${QB_TOKEN_REFRESH_BUFFER_MINUTES:-15}
+      - QB_CLIENT_ID=${QB_CLIENT_ID:-}
+      - QB_CLIENT_SECRET=${QB_CLIENT_SECRET:-}
+      - QB_REDIRECT_URI=${QB_REDIRECT_URI:-http://localhost:8000/quickbooks/oauth/callback/}
+      - QB_SANDBOX_COMPANY_ID=${QB_SANDBOX_COMPANY_ID:-}
+      - QB_TOKEN_ENCRYPTION_KEY=${QB_TOKEN_ENCRYPTION_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLOSE_SUMMARY_MODEL=${CLOSE_SUMMARY_MODEL:-claude-sonnet-4-6}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: celery -A close_assistant worker -l info
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-docker-dev-key}
+      - DEBUG=${DEBUG:-True}
+      - DATABASE_URL=postgres://close_app:close_dev_pw@db:5432/close_assistant
+      - DB_NAME=close_assistant
+      - DB_USER=close_app
+      - DB_PASSWORD=close_dev_pw
+      - DB_HOST=db
+      - DB_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-False}
+      - QB_ENVIRONMENT=${QB_ENVIRONMENT:-sandbox}
+      - QB_TOKEN_REFRESH_BUFFER_MINUTES=${QB_TOKEN_REFRESH_BUFFER_MINUTES:-15}
+      - QB_CLIENT_ID=${QB_CLIENT_ID:-}
+      - QB_CLIENT_SECRET=${QB_CLIENT_SECRET:-}
+      - QB_REDIRECT_URI=${QB_REDIRECT_URI:-http://localhost:8000/quickbooks/oauth/callback/}
+      - QB_SANDBOX_COMPANY_ID=${QB_SANDBOX_COMPANY_ID:-}
+      - QB_TOKEN_ENCRYPTION_KEY=${QB_TOKEN_ENCRYPTION_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLOSE_SUMMARY_MODEL=${CLOSE_SUMMARY_MODEL:-claude-sonnet-4-6}
+    depends_on:
+      - db
+      - redis
+
+  beat:
+    build: .
+    command: celery -A close_assistant beat -l info
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-docker-dev-key}
+      - DEBUG=${DEBUG:-True}
+      - DATABASE_URL=postgres://close_app:close_dev_pw@db:5432/close_assistant
+      - DB_NAME=close_assistant
+      - DB_USER=close_app
+      - DB_PASSWORD=close_dev_pw
+      - DB_HOST=db
+      - DB_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-False}
+      - QB_ENVIRONMENT=${QB_ENVIRONMENT:-sandbox}
+      - QB_TOKEN_REFRESH_BUFFER_MINUTES=${QB_TOKEN_REFRESH_BUFFER_MINUTES:-15}
+      - QB_CLIENT_ID=${QB_CLIENT_ID:-}
+      - QB_CLIENT_SECRET=${QB_CLIENT_SECRET:-}
+      - QB_REDIRECT_URI=${QB_REDIRECT_URI:-http://localhost:8000/quickbooks/oauth/callback/}
+      - QB_SANDBOX_COMPANY_ID=${QB_SANDBOX_COMPANY_ID:-}
+      - QB_TOKEN_ENCRYPTION_KEY=${QB_TOKEN_ENCRYPTION_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLOSE_SUMMARY_MODEL=${CLOSE_SUMMARY_MODEL:-claude-sonnet-4-6}
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  pgdata:

@@ -580,3 +580,47 @@ Full suite: **102 tests pass**.
 **Deviations:** None. Logout and password-change views come for free via
 `django.contrib.auth.urls`, but the dashboard only needs login.
 
+---
+
+## Step 15 — `feat(core): step 15 — Dockerize Django + Postgres + Redis`
+
+Wrapped the Monthly Close Assistant in Docker Compose so the whole stack runs
+consistently in local development and CI.
+
+- **`Dockerfile`** — production-ready Django image based on `python:3.13-slim-bookworm`,
+  installs build deps for `psycopg3`, copies the app, exposes port 8000, and uses
+  Gunicorn as the default command.
+- **`docker-entrypoint.sh`** — runs migrations, collects static files, then `exec`s
+  the container command.
+- **`docker-compose.yml`** — brings up:
+  - `db` — Postgres 17 with a healthcheck and named volume.
+  - `redis` — Redis 7 with a healthcheck.
+  - `web` — Django/Gunicorn, depends on healthy `db` and `redis`.
+  - `worker` — Celery worker for background tasks.
+  - `beat` — Celery beat scheduler for nightly sync.
+- **`.dockerignore`** — excludes local env, git, venvs, caches, staticfiles, and Markdown
+  docs except `README.md`.
+- **`close_assistant/settings.py`** now supports `DATABASE_URL` via `dj-database-url`
+  while still falling back to the individual `DB_*` variables used for local dev.
+- **`.env.example`** updated to document `DATABASE_URL`.
+- **`requirements.txt`** added `dj-database-url` and `gunicorn`.
+
+**TDD:** created `core/tests/test_dockerize.py` with 5 tests first: Dockerfile,
+`docker-compose.yml`, and `.dockerignore` exist, `DATABASE_URL` overrides the DB_*
+settings, and the DB_* fallback remains optional. Confirmed failures (files missing,
+HOST was `localhost` instead of `db`), then implemented to green. Full suite:
+**107 tests pass** both on the host and inside the `web` container.
+
+**Improvements beyond the spec:**
+- Included Celery `worker` and `beat` services so scheduled tasks run out of the box
+  in the composed environment.
+- Normalized the parsed `DATABASE_URL` port to a string so the scaffold settings tests
+  stay compatible with the original `python-decouple` string values.
+- Set `PYTHONDONTWRITEBYTECODE` and `PYTHONUNBUFFERED` in the image.
+- Used healthcheck conditions so the web container waits for Postgres and Redis to be
+  ready before starting.
+
+**Deviations:** None. The container uses Python 3.13 (the host environment is 3.14.2)
+  because 3.13 has broad wheel support and a stable slim image; the Django app is
+  compatible with both.
+
