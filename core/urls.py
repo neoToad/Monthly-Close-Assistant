@@ -14,6 +14,7 @@ from core import views
 app_name = "core"
 
 urlpatterns = [
+    path("", views.home, name="home"),
     path("quickbooks/oauth/start/", views.qb_oauth_start, name="qb_oauth_start"),
     path("quickbooks/oauth/callback/", views.qb_oauth_callback, name="qb_oauth_callback"),
     path("dashboard/", views.dashboard, name="dashboard"),

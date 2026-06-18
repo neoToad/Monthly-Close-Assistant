@@ -24,7 +24,30 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    {% block page_header %}{% endblock %}
+    {% block page_header %}
+        <header class="site-header">
+            <nav class="site-nav" aria-label="Primary">
+                <a class="site-brand" href="{% url 'core:home' %}">Close Assistant</a>
+
+                <ul class="site-nav-links">
+                    {% if request.user.is_authenticated %}
+                        <li><a href="{% url 'core:dashboard' %}">Dashboard</a></li>
+                        <li><a href="{% url 'core:qb_oauth_start' %}">Connect QuickBooks</a></li>
+                        <li><a href="{% url 'admin:index' %}">Admin</a></li>
+                        <li>
+                            <form method="post" action="{% url 'logout' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="nav-logout">Log out</button>
+                            </form>
+                        </li>
+                    {% else %}
+                        <li><a href="{% url 'admin:index' %}">Admin</a></li>
+                        <li><a href="{% url 'login' %}">Log in</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </header>
+    {% endblock %}
 
     <main>
         {% block content %}{% endblock %}
