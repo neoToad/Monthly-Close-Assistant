@@ -743,3 +743,32 @@ system stage so the D1–D7 commits stay isolated:
 previous stage.
 
 ---
+
+## D1 — `feat(ui): D1 — design tokens and base ledger styles`
+
+Created the ledger design-system foundation:
+
+- Added `core/static/css/tokens.css` with CSS custom properties for the ledger
+  palette (`--color-ink`, `--color-paper`, `--color-slate`, `--color-flag`,
+  `--color-confirmed`, `--color-rejected`, `--color-hairline`), typography
+  (`--font-display` using Source Serif 4, `--font-body` using IBM Plex Sans),
+  type scale (`--text-xs` through `--text-2xl`), and 4px spacing scale
+  (`--space-1` through `--space-8`).
+- Replaced the inline style block in `core/templates/base.html` with Google Fonts
+  links and a `{% static %}` link to `tokens.css`.
+- Applied global base styles: `--color-paper` background, `--color-ink` text,
+  `--font-body`, and a base reset that avoids shadows.
+
+**TDD:** wrote `core/tests/test_design_system.py` first; it failed because
+`tokens.css` and the new `base.html` links did not exist, then passed after
+implementation.
+
+**Improvements beyond the spec:**
+- Added a `page_header` block in `base.html` so the dashboard can own its
+  ledger-style header without a global nav header.
+- Removed the default generic header from `base.html` so there is only one calm,
+  dashboard-specific header after D2.
+
+**Deviations:** None.
+
+---
