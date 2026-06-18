@@ -7,5 +7,5 @@
 - [x] D3 — Flagged Items Table Redesign
 - [x] D4 — Draft Summary Section
 - [x] D5 — Empty & Loading States
-- [ ] D6 — Responsive & Accessibility Pass
+- [x] D6 — Responsive & Accessibility Pass
 - [ ] D7 — Self-Critique Pass

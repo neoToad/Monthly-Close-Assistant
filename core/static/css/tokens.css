@@ -3,7 +3,7 @@
     --color-ink: #1C2B3A;
     --color-paper: #F7F5F0;
     --color-slate: #5B6B7A;
-    --color-flag: #C9762B;
+    --color-flag: #A05E22;
     --color-confirmed: #3A6B4C;
     --color-rejected: #8B3A3A;
     --color-hairline: #DDD8CC;
@@ -337,6 +337,11 @@ main {
     border-color: var(--color-slate);
 }
 
+.notes-field:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+}
+
 .notes-field::placeholder {
     color: var(--color-slate);
 }
@@ -360,6 +365,25 @@ main {
 .htmx-request {
     opacity: 0.5;
     transition: opacity 0.2s ease;
+}
+
+/* Responsive: stack ledger rows below 640px. */
+@media (max-width: 640px) {
+    .ledger-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+
+    .ledger-row-meta {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .amount {
+        text-align: left;
+        min-width: auto;
+    }
 }
 
 /* Flat, hairline aesthetic: avoid shadows and heavy radius in base styles. */

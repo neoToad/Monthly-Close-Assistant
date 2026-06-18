@@ -880,3 +880,30 @@ empty-state copy and the `.htmx-request` CSS rule, then implemented to green.
 **Deviations:** None.
 
 ---
+
+## D6 — `feat(ui): D6 — responsive layout and accessibility pass`
+
+Completed the responsive and accessibility pass:
+
+- Added a `@media (max-width: 640px)` block that stacks `.ledger-row` vertically,
+  aligns content to the start, and spreads the amount/actions row across the
+  full width.
+- Verified visible keyboard focus states for `.month-select`, `.text-btn`, and
+  `.notes-field` using `:focus-visible` with a 2px `--color-ink` outline.
+- Added a programmatic contrast check in `test_design_system.py` that parses the
+  actual CSS token values and asserts WCAG AA 4.5:1 against `--color-paper`.
+- Darkened `--color-flag` from `#C9762B` to `#A05E22` so the open-flag color
+  passes WCAG AA small-text contrast on the paper background.
+
+**TDD:** wrote failing responsive/contrast tests before adding the media query and
+focus styles, then adjusted the flag color until all tests passed.
+
+**Improvements beyond the spec:**
+- Added a reusable `_token_value()` helper in the tests so contrast assertions
+  stay tied to the live CSS values rather than duplicated hex literals.
+
+**Deviations:**
+- `--color-flag` is `#A05E22` instead of the spec's `#C9762B`. The original value
+  failed WCAG AA against `#F7F5F0` (3.15:1); the adjusted value passes (4.68:1).
+
+---

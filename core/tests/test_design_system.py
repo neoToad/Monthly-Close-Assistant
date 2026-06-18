@@ -35,7 +35,7 @@ class DesignTokenTests(TestCase):
             ("--color-ink", "#1C2B3A"),
             ("--color-paper", "#F7F5F0"),
             ("--color-slate", "#5B6B7A"),
-            ("--color-flag", "#C9762B"),
+            ("--color-flag", "#A05E22"),
             ("--color-confirmed", "#3A6B4C"),
             ("--color-rejected", "#8B3A3A"),
             ("--color-hairline", "#DDD8CC"),
@@ -270,3 +270,74 @@ class EmptyAndLoadingStateTests(TestCase):
         css = (Path(settings.BASE_DIR) / "core" / "static" / "css" / "tokens.css").read_text(encoding="utf-8")
         self.assertIn(".htmx-request", css)
         self.assertIn("opacity: 0.5", css)
+
+
+class ResponsiveAccessibilityTests(TestCase):
+    """D6 — Responsive and accessibility pass."""
+
+    @property
+    def tokens_path(self) -> Path:
+        return Path(settings.BASE_DIR) / "core" / "static" / "css" / "tokens.css"
+
+    @property
+    def css(self) -> str:
+        return self.tokens_path.read_text(encoding="utf-8")
+
+    def test_mobile_media_query_stacks_ledger_rows(self) -> None:
+        css = self.css
+        self.assertIn("@media (max-width: 640px)", css)
+        # The media block should change the row direction to column.
+        media_block = css.split("@media (max-width: 640px)", 1)[1].split("}", 1)[0]
+        self.assertIn(".ledger-row", media_block)
+        self.assertIn("flex-direction", media_block)
+
+    def test_interactive_elements_have_visible_focus_outlines(self) -> None:
+        css = self.css
+        for selector in (".month-select:focus-visible", ".text-btn:focus-visible", ".notes-field:focus-visible"):
+            self.assertIn(selector, css)
+            block = css.split(selector, 1)[1].split("}", 1)[0]
+            self.assertIn("outline", block)
+
+    def _relative_luminance(self, hex_color: str) -> float:
+        hex_color = hex_color.lstrip("#")
+        r = int(hex_color[0:2], 16) / 255
+        g = int(hex_color[2:4], 16) / 255
+        b = int(hex_color[4:6], 16) / 255
+        channels = []
+        for c in (r, g, b):
+            if c <= 0.03928:
+                channels.append(c / 12.92)
+            else:
+                channels.append(((c + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    def _contrast_ratio(self, fg: str, bg: str) -> float:
+        lum1 = self._relative_luminance(fg)
+        lum2 = self._relative_luminance(bg)
+        lighter = max(lum1, lum2)
+        darker = min(lum1, lum2)
+        return (lighter + 0.05) / (darker + 0.05)
+
+    def _token_value(self, name: str) -> str:
+        import re
+
+        match = re.search(rf"{re.escape(name)}:\s*(#[0-9A-Fa-f]{{6}})", self.css)
+        if not match:
+            self.fail(f"Could not find hex value for {name} in tokens.css")
+        return match.group(1)
+
+    def test_token_colors_meet_wcag_aa_against_paper(self) -> None:
+        """Small text WCAG AA requires a contrast ratio of at least 4.5:1."""
+        paper = self._token_value("--color-paper")
+        for fg in (
+            self._token_value("--color-ink"),
+            self._token_value("--color-slate"),
+            self._token_value("--color-flag"),
+            self._token_value("--color-rejected"),
+        ):
+            ratio = self._contrast_ratio(fg, paper)
+            self.assertGreaterEqual(
+                ratio,
+                4.5,
+                f"{fg} on {paper} has contrast {ratio:.2f}:1, below WCAG AA 4.5:1",
+            )

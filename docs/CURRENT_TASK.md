@@ -6,11 +6,12 @@ Design System (Prompts D1–D7).
 
 ## Current task
 
-**D6 — Responsive & Accessibility Pass**
+**D7 — Self-Critique Pass**
 
-Make the flagged-items ledger stack on mobile below 640px, add visible keyboard
-focus outlines, and verify WCAG AA contrast for the token colors. Add failing
-tests first.
+Review the rendered dashboard against the design-system constraint checklist (no
+shadows, no pill badges, no card layout, serif only for title/month, amber only
+for open flags, green only for approved/confirmed). Fix any violations, run final
+tests, update tracking files, push the branch, and stop.
 
 ## Branch
 
@@ -18,4 +19,4 @@ tests first.
 
 ## Next step
 
-D7 — Self-Critique Pass (after D6 is committed and pushed).
+Stop — the design-system stage is complete once D7 is committed and pushed.
