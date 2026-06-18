@@ -72,7 +72,7 @@ staticfiles/
 static/CACHE/
 
 # ---- Celery ----
-celerybeat-schedule
+celerybeat-schedule*
 celerybeat.pid
 
 # ---- PostgreSQL (local dumps) ----

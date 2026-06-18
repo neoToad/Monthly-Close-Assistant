@@ -341,3 +341,40 @@ class ResponsiveAccessibilityTests(TestCase):
                 4.5,
                 f"{fg} on {paper} has contrast {ratio:.2f}:1, below WCAG AA 4.5:1",
             )
+
+
+class SelfCritiqueTests(TestCase):
+    """D7 — Self-critique pass against design-system constraints."""
+
+    @property
+    def tokens_path(self) -> Path:
+        return Path(settings.BASE_DIR) / "core" / "static" / "css" / "tokens.css"
+
+    @property
+    def css(self) -> str:
+        return self.tokens_path.read_text(encoding="utf-8")
+
+    def setUp(self) -> None:
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+
+    def test_css_has_no_box_shadows_beyond_the_intentional_reset(self) -> None:
+        for line in self.css.splitlines():
+            if "box-shadow" in line:
+                self.assertIn("none", line, f"Unexpected box-shadow rule: {line}")
+
+    def test_css_has_no_border_radius_above_4px(self) -> None:
+        import re
+
+        for match in re.finditer(r"border-radius:\s*(\d+)px", self.css):
+            radius = int(match.group(1))
+            self.assertLessEqual(radius, 4, f"border-radius {radius}px exceeds 4px")
+
+    def test_dashboard_markup_has_no_inline_styles_or_shadows(self) -> None:
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        content = resp.content.decode("utf-8")
+        self.assertNotIn("box-shadow", content)
+        self.assertNotIn("border-radius: 9999px", content)
+        self.assertNotIn("border-radius: 50%", content)

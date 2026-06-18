@@ -8,4 +8,4 @@
 - [x] D4 — Draft Summary Section
 - [x] D5 — Empty & Loading States
 - [x] D6 — Responsive & Accessibility Pass
-- [ ] D7 — Self-Critique Pass
+- [x] D7 — Self-Critique Pass
