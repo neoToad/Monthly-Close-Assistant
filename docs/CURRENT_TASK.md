@@ -2,22 +2,20 @@
 
 ## Stage
 
-Build (Prompts 4–18) — IN PROGRESS. Prompt 15 complete; starting Prompt 16.
+Build (Prompts 4–18) — IN PROGRESS. Prompt 16 complete; starting Prompt 17.
 
 ## Current task
 
-Step 16 — CI/CD. Add a GitHub Actions workflow that lints, runs the full Django test
-suite inside Docker compose, and verifies the Docker image builds on every push and
-pull request to `feature/close-assistant-build` and `main`.
+Step 17 — Deploy to Railway. Document the deployment approach and any required
+configuration (e.g., environment variables, Postgres/Redis add-ons, Dockerfile).
+If Railway credentials are not available, record what would be done and note that
+it was not exercised.
 
 ## Completion criteria
 
-- `.github/workflows/ci.yml` created.
-- Workflow triggers on push/PR to `feature/close-assistant-build` and `main`.
-- Steps: checkout, build Docker compose stack, run `python manage.py test` inside the
-  backend container, report results.
-- Keep `docs/CURRENT_TASK.md`, `docs/CHANGELOG.md`, `docs/TODO.md` updated.
-- Commit with the Prompt 16 message and push.
+- Document Railway deployment setup in `docs/DEPLOY.md` or the README.
+- Update `docs/TODO.md` and `docs/CHANGELOG.md`.
+- Commit with the Prompt 17 message and push.
 
 ## Branch
 

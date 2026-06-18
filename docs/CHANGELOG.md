@@ -624,3 +624,32 @@ HOST was `localhost` instead of `db`), then implemented to green. Full suite:
   because 3.13 has broad wheel support and a stable slim image; the Django app is
   compatible with both.
 
+---
+
+## Step 16 — `feat(core): step 16 — GitHub Actions CI/CD with Docker compose`
+
+Added a GitHub Actions workflow that builds the Docker Compose stack and runs the
+full Django test suite on every push and pull request.
+
+- **`.github/workflows/ci.yml`** with:
+  - Triggers on `push` and `pull_request` for `main` and
+    `feature/close-assistant-build`.
+  - A `test` job on `ubuntu-latest`.
+  - Steps: checkout, `docker compose build`, `docker compose run --rm web
+    python manage.py test --noinput -v 1`, and `docker compose down` (always run).
+- **`core/tests/test_cicd.py`** verifies the workflow file exists, targets the right
+  branches, and uses Docker compose for build + test.
+
+**TDD:** wrote `core/tests/test_cicd.py` first; it failed because `.github/workflows/ci.yml`
+did not exist. Implemented the workflow and the tests passed. Full suite:
+**110 tests pass** on the host.
+
+**Improvements beyond the spec:**
+- The CI job mirrors the local container test command exactly, so a green local
+  `docker compose run ...` is a reliable predictor of CI success.
+- `docker compose down` runs even if tests fail, preventing orphaned containers and
+  volumes on CI runners.
+
+**Deviations:** None. The workflow does not deploy; deployment is deferred to
+Prompt 17.
+
