@@ -2,27 +2,15 @@
 
 ## Stage
 
-Build (Prompts 4–18) — IN PROGRESS. Prompt 17 complete; starting Prompt 18.
+Build (Prompts 4–18) — **COMPLETE**. Prompt 18 (README) is done.
 
 ## Current task
 
-Step 18 — README. Write a comprehensive project README that explains what the Monthly
-Close Assistant does, how to set it up locally, how to run tests, how to use the key
-management commands, and how to deploy via Docker / Railway.
+No active build task. All required prompts through Prompt 18 are committed and pushed
+to `feature/close-assistant-build`.
 
-## Completion criteria
-
-- `README.md` at the repo root covers:
-  - Project overview and high-level architecture.
-  - Local setup (clone, env, Docker compose, migrations).
-  - Running tests (`python manage.py test` and inside Docker).
-  - Management commands (sync_quickbooks, run_reconciliation, generate_close_summary,
-    seed_demo_data).
-  - Dashboard and access control.
-  - Deployment notes (Railway, CI).
-- Update `docs/CHANGELOG.md` and `docs/TODO.md`.
-- Commit with the Prompt 18 message and push.
-- Stop after this commit; do not start stretch prompts or open a PR.
+Per the build instructions, stop here — do not start stretch prompts and do not open a
+pull request unless explicitly asked.
 
 ## Branch
 

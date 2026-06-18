@@ -683,3 +683,36 @@ failures (`docs/DEPLOY.md` missing), then implemented to green. Full suite:
 
 **Deviations:** None. No live deploy was performed; this is recorded explicitly.
 
+---
+
+## Step 18 — `feat(core): step 18 — comprehensive project README`
+
+Replaced the placeholder `README.md` with a full project overview and contributor guide.
+
+- **Root `README.md`** now includes:
+  - Project overview and feature list.
+  - High-level architecture diagram.
+  - Local setup instructions for both Docker Compose and host-based development.
+  - How to run tests on the host and inside the container.
+  - Required environment variables table.
+  - Management commands table with examples.
+  - Dashboard usage and superuser creation.
+  - Deployment notes pointing to `docs/DEPLOY.md`.
+  - CI/CD summary.
+- **`core/tests/test_readme.py`** validates the README presence and key sections (TDD).
+
+**TDD:** wrote `core/tests/test_readme.py` first; it failed because the existing
+`README.md` was a UTF-16 placeholder with only a title. Replaced the file with a
+UTF-8 README covering all required sections, and the tests passed. Full suite:
+**118 tests pass** on the host.
+
+**Improvements beyond the spec:**
+- Converted the README from UTF-16 to UTF-8 for cross-platform compatibility.
+- Added an architecture diagram in ASCII so the high-level data flow is visible
+  without external tooling.
+- Kept deployment details in `docs/DEPLOY.md` and linked from the README to avoid
+  duplicating instructions.
+
+**Deviations:** None. The build stops after Prompt 18 per the original instructions;
+no stretch prompts or PR were opened.
+
