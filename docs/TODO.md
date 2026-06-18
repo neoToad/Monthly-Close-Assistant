@@ -3,9 +3,9 @@
 Items deferred to later stages (per the prompt sequence). Moved here from the running
 plan so the current step stays uncluttered.
 
-## Prompt 7+ — Later stages
-- Reconciliation, anomaly detection, idempotency, agent layer, demo seed, Celery,
-  HTMX dashboard, auth, Docker, CI/CD, deploy, README.
+## Prompt 8+ — Later stages
+- Anomaly detection, idempotency, agent layer, demo seed, Celery, HTMX dashboard,
+  auth, Docker, CI/CD, deploy, README.
 
 ## Open questions / future layout
 - Django project currently lives at repo root (per the Foundation prompt). If a later

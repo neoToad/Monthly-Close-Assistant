@@ -267,6 +267,36 @@ implemented to green. Full suite: **64 tests pass**.
 
 **Deviations:** None.
 
+---
+
+## Step 7 — `feat(core): step 7 — Pandas reconciliation engine + run_reconciliation command`
+
+Implemented the reconciliation engine that compares GL ``Transaction`` records to
+the fake ``BankTransaction`` feed and creates ``Flag`` records for mismatches.
+
+- **New package `core/reconciliation/`** with `engine.py`:
+  - Loads both sides into Pandas DataFrames for the target month.
+  - Matches bank rows to GL rows on vendor equality, amount within $0.01, and date
+    within 1 day.
+  - Flags amount mismatches, date mismatches (within tolerance), bank-only rows,
+    and GL-only rows.
+  - Returns a summary dict with counts of matched/unmatched rows and flags created.
+- **New management command `run_reconciliation``** taking a `YYYY-MM` month argument
+  and printing the reconciliation summary.
+
+**TDD:** extended `core/tests/test_management.py` with 7 reconciliation tests first:
+no-data exit, clean match (no flags), amount mismatch flag, date mismatch beyond
+and within tolerance, missing bank, and missing GL. Confirmed failures (`Unknown
+command: 'run_reconciliation'`), then implemented to green. Full suite: **71 tests pass**.
+
+**Improvements beyond the spec:**
+- Separated the matching engine (`core/reconciliation/engine.py`) from the command
+  so the logic is reusable and unit-testable without invoking a management command.
+- Used Pandas for the comparison and `bulk_create` for flag insertion.
+- Matched on lower-cased vendor names to tolerate minor casing differences.
+
+**Deviations:** None.
+
 **Deviations:**
 - **Live sandbox pull NOT exercised** (no sandbox credentials available). The OAuth
   flow and sync pipeline are fully implemented and unit-tested against mocked

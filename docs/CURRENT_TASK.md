@@ -1,20 +1,22 @@
 # Current Task
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 6 complete; starting Prompt 7.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 7 complete; starting Prompt 8.
 
 The foundation stage (Prompts 1–3) is complete and committed on
 `feature/close-assistant-build`.
 
 ## What is actively happening
-Step 7 — Reconciliation Logic.
+Step 8 — Anomaly Detection.
 
-- Build a Pandas-based reconciliation module in `core/reconciliation/` that compares
-  ``Transaction`` and ``BankTransaction`` records for a month.
-- Match on vendor, amount within $0.01, and date within 1 day.
-- Create ``Flag`` records with ``flag_type="reconciliation"`` for unmatched or
-  mismatched pairs and one-sided entries.
-- Wire it into a `run_reconciliation` management command that takes a month argument.
+- Add rule-based anomaly checks on a month's ``Transaction`` data:
+  * vendor amount > 2σ from historical average
+  * duplicate transactions within a 7-day window
+  * new vendors with no prior history
+  * categories with > 200% month-over-month change
+- Create ``Flag`` records with ``flag_type="anomaly"`` and clear reasons.
+- Integrate anomaly detection into `run_reconciliation` so it runs both
+  reconciliation and anomaly checks together.
 - Write tests first (TDD), implement, then commit.
 
 ## Status
@@ -24,8 +26,9 @@ Step 7 — Reconciliation Logic.
 - [x] Prompt 4 — QuickBooks secrets & environment config.
 - [x] Prompt 5 — Error handling & edge cases (QuickBooks sync).
 - [x] Prompt 6 — Fake bank feed generator.
-- [ ] Prompt 7 — Reconciliation logic.
-- [ ] Prompts 8–18 — queued.
+- [x] Prompt 7 — Reconciliation logic.
+- [ ] Prompt 8 — Anomaly detection.
+- [ ] Prompts 9–18 — queued.
 
 ## Decision / blocker notes
 - Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
@@ -35,4 +38,4 @@ Step 7 — Reconciliation Logic.
 - See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-Implement Prompt 7 test-first, keep tests green, commit, then move to Prompt 8.
+Implement Prompt 8 test-first, keep tests green, commit, then move to Prompt 9.
