@@ -1,17 +1,28 @@
 <div id="dashboard-content">
-    <h2>Review Dashboard — {{ month }}</h2>
+    <header class="ledger-header">
+        <h1 class="ledger-title">Close Assistant</h1>
+        <div class="month-control">
+            <label for="month-select" class="visually-hidden">Month</label>
+            <select id="month-select" name="month"
+                    class="month-select"
+                    hx-get="{% url 'core:dashboard' %}"
+                    hx-target="#dashboard-content"
+                    hx-push-url="true">
+                {% for m in months %}
+                    <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
+                {% empty %}
+                    <option value="{{ month }}" selected>{{ month }}</option>
+                {% endfor %}
+            </select>
+            <span class="caret" aria-hidden="true">▾</span>
+        </div>
+    </header>
 
-    <label for="month-select" class="muted">Month</label>
-    <select id="month-select" name="month"
-            hx-get="{% url 'core:dashboard' %}"
-            hx-target="#dashboard-content"
-            hx-push-url="true">
-        {% for m in months %}
-            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
-        {% empty %}
-            <option value="{{ month }}" selected>{{ month }}</option>
-        {% endfor %}
-    </select>
+    <div class="status-strip" aria-label="Flag counts for {{ month }}">
+        <span><span class="dot flag" aria-hidden="true"></span>{{ flag_counts.open }} open</span>
+        <span><span class="dot confirmed" aria-hidden="true"></span>{{ flag_counts.approved }} approved</span>
+        <span><span class="dot rejected" aria-hidden="true"></span>{{ flag_counts.rejected }} rejected</span>
+    </div>
 
     <h3>Open Flags</h3>
     {% if flags %}

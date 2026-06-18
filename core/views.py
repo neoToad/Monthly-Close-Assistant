@@ -93,12 +93,20 @@ def dashboard(request):
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
-    flags = Flag.objects.filter(
-        status=FlagStatus.OPEN
-    ).filter(
+    month_flags = Flag.objects.filter(
         Q(transaction__date__range=(first, last))
         | Q(bank_transaction__date__range=(first, last))
-    ).select_related("transaction", "bank_transaction").order_by("-created_at")
+    )
+
+    flags = month_flags.filter(status=FlagStatus.OPEN).select_related(
+        "transaction", "bank_transaction"
+    ).order_by("-created_at")
+
+    flag_counts = {
+        "open": month_flags.filter(status=FlagStatus.OPEN).count(),
+        "approved": month_flags.filter(status=FlagStatus.APPROVED).count(),
+        "rejected": month_flags.filter(status=FlagStatus.REJECTED).count(),
+    }
 
     summary = CloseSummary.objects.filter(month=month).first()
     months = _available_months()
@@ -107,6 +115,7 @@ def dashboard(request):
         "month": month,
         "months": months,
         "flags": flags,
+        "flag_counts": flag_counts,
         "summary": summary,
     }
     template = (

@@ -50,6 +50,114 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+main {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-5) var(--space-8);
+}
+
+/* Header */
+.ledger-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-hairline);
+}
+
+.ledger-title {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin: 0;
+    color: var(--color-ink);
+}
+
+.month-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.month-select {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    color: var(--color-slate);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding-right: var(--space-4);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+
+.month-select:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+}
+
+.caret {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7em;
+    color: var(--color-slate);
+    pointer-events: none;
+}
+
+/* Status ledger strip */
+.status-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--color-hairline);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-slate);
+}
+
+.status-strip span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot.flag {
+    background: var(--color-flag);
+}
+
+.dot.confirmed {
+    background: var(--color-confirmed);
+}
+
+.dot.rejected {
+    background: var(--color-rejected);
+}
+
 /* Flat, hairline aesthetic: avoid shadows and heavy radius in base styles. */
 * {
     box-shadow: none;

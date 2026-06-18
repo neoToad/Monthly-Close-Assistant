@@ -6,11 +6,13 @@ Design System (Prompts D1–D7).
 
 ## Current task
 
-**D1 — Design Tokens & Base Styles**
+**D3 — Flagged Items Table Redesign**
 
-Create `core/static/css/tokens.css`, load the Google Fonts in `base.html`, and
-apply the ledger design-tokens globally. Start with failing tests that assert the
-tokens, font links, and stylesheet link are present.
+Restyle the flagged-items list in `core/templates/core/flag_row.html` and
+`core/templates/core/dashboard_content.html` to look like a ledger: hairline row
+dividers, vendor + reason lines, right-aligned tabular amount, colored status
+dot + label, and plain-text Approve/Reject buttons that fade out on resolution.
+Add failing tests first that assert the new row structure.
 
 ## Branch
 
@@ -18,4 +20,4 @@ tokens, font links, and stylesheet link are present.
 
 ## Next step
 
-D2 — Page Shell & Header (after D1 is committed and pushed).
+D4 — Draft Summary Section (after D3 is committed and pushed).

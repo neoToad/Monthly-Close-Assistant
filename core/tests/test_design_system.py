@@ -7,6 +7,7 @@ provide.
 """
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 from django.conf import settings
@@ -67,3 +68,59 @@ class DesignTokenTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         content = resp.content.decode("utf-8")
         self.assertIn("tokens.css", content)
+
+
+class DashboardHeaderTests(TestCase):
+    """D2 — Page shell and ledger header."""
+
+    def setUp(self) -> None:
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+
+    def _create_flag(self, status: str, vendor: str = "Acme Corp", amount: str = "100.00") -> Flag:
+        from decimal import Decimal
+
+        from core.models import Flag, FlagStatus, Transaction
+
+        counter = getattr(self, "_flag_counter", 0) + 1
+        self._flag_counter = counter
+        txn = Transaction.objects.create(
+            date=dt.date(2025, 1, 15),
+            vendor=vendor,
+            amount=Decimal(amount),
+            qb_transaction_id=f"QB-{counter}-{vendor}",
+            source_type="Purchase",
+        )
+        return Flag.objects.create(
+            flag_type="reconciliation",
+            transaction=txn,
+            reason=f"{status} flag",
+            severity="medium",
+            status=getattr(FlagStatus, status.upper()),
+        )
+
+    def test_dashboard_header_has_title_and_month_selector(self) -> None:
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode("utf-8")
+        self.assertIn("ledger-header", content)
+        self.assertIn("Close Assistant", content)
+        self.assertIn('class="ledger-title"', content)
+        self.assertIn('select', content)
+        self.assertIn('id="month-select"', content)
+
+    def test_status_strip_shows_open_approved_rejected_counts(self) -> None:
+        self._create_flag("open")
+        self._create_flag("open")
+        self._create_flag("approved")
+        self._create_flag("rejected")
+
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode("utf-8")
+        self.assertIn("status-strip", content)
+        self.assertIn("2 open", content)
+        self.assertIn("1 approved", content)
+        self.assertIn("1 rejected", content)

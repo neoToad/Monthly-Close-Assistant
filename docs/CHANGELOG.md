@@ -772,3 +772,29 @@ implementation.
 **Deviations:** None.
 
 ---
+
+## D2 — `feat(ui): D2 — ledger page shell, header, and status strip`
+
+Rebuilt the dashboard page shell:
+
+- Replaced the generic `dashboard_content.html` header with a single-row
+  `.ledger-header` containing the serif page title "Close Assistant" and a
+  plain-text `.month-select` dropdown with a caret.
+- Added a `.status-strip` below the header showing colored-dot counts for
+  open/approved/rejected flags for the selected month.
+- Updated `core/views.py` `dashboard()` to compute `flag_counts` across all flags
+  in the month while still returning only open flags in the main `flags` list.
+- Added header/status styles to `tokens.css`, including a `.visually-hidden`
+  utility and `.month-select` reset with a visible focus state.
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+ledger header structure and status-strip counts, then implemented to green.
+
+**Improvements beyond the spec:**
+- Wrapped the month selector in a `.month-control` div with a visually-hidden label
+  so the select remains accessible while looking like plain text.
+- Added `aria-label` to the status strip and `aria-hidden` on the decorative dots.
+
+**Deviations:** None.
+
+---
