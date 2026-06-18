@@ -432,3 +432,42 @@ then implemented to green. Full suite: **87 tests pass**.
   is unit-tested with a fake client; the deterministic fallback is used in the
   standard test suite.
 
+---
+
+## Step 11 — `feat(core): step 11 — demo data seeding command`
+
+Added a single `seed_demo_data` management command that creates a fully populated
+month of demo data and runs the entire close pipeline.
+
+- **New module `core/demo_seed.py`** with `seed_demo_data(month, count=20, ...)`:
+  - Clears flags and demo ``Transaction`` rows (``qb_transaction_id__startswith="DEMO-"``)
+    for the target month before re-seeding.
+  - Creates ``count`` synthetic ``Transaction`` records with Faker using realistic
+    vendors, categories, GL accounts, and amounts.
+  - Runs ``generate_bank_feed`` with ``force=True`` to produce the bank side.
+  - Runs ``run_reconciliation`` (which includes anomaly detection) to generate flags.
+  - Runs ``draft_close_summary`` to create/update a ``CloseSummary`` draft.
+  - Defaults to a deterministic random seed so re-runs produce the same demo data and
+    the same flags (idempotent); ``--seed`` lets users vary the data.
+- **New management command `seed_demo_data``** with ``month``, optional ``--count``,
+  and optional ``--seed`` arguments.
+- Added **Faker 40.23.0** to `requirements.txt`.
+
+**TDD:** added 3 tests to `core/tests/test_management.py` first:
+- `test_seeds_transactions_bank_feed_flags_and_summary` (failed: unknown command).
+- `test_re_running_is_idempotent` (failed: second run produced different flag counts).
+- `test_preserves_non_demo_transactions` (failed: unknown command).
+
+Fixed by adding the command, clearing flags before demo transactions, and defaulting
+to a deterministic seed. Full suite: **90 tests pass**.
+
+**Improvements beyond the spec:**
+- Demo clearing only deletes demo-identified transactions, so any real
+  ``Transaction`` rows the user already has are preserved.
+- Flags are cleared before transactions to avoid orphaned ``Flag`` records with
+  ``NULL`` FKs after the demo rows are deleted.
+- The command prints a clear stage summary: transactions created, bank transactions
+  created, reconciliation flags created, and close summary month.
+
+**Deviations:** None. Live QuickBooks and Anthropic integrations are still not
+exercised; the demo command uses the local fake feed and deterministic summary.

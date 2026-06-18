@@ -1,19 +1,17 @@
 # Current Task
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 10 complete; starting Prompt 11.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 11 complete; starting Prompt 12.
 
 The foundation stage (Prompts 1–3) is complete and committed on
 `feature/close-assistant-build`.
 
 ## What is actively happening
-Step 11 — Demo Data Seeding.
+Step 12 — Celery Scheduled Sync.
 
-- Create a single `seed_demo_data` management command.
-- The command should create demo ``Transaction`` records with Faker, run
-  `generate_bank_feed`, run reconciliation + anomaly detection, and run the agent
-  summary generator.
-- Ensure it is safe to run repeatedly without duplicates (idempotent).
+- Install Celery and Redis.
+- Configure Celery with Django.
+- Add a nightly scheduled task that runs `sync_quickbooks`.
 - Write tests first (TDD), implement, then commit.
 
 ## Status
@@ -27,8 +25,9 @@ Step 11 — Demo Data Seeding.
 - [x] Prompt 8 — Anomaly detection.
 - [x] Prompt 9 — Idempotency for reconciliation & sync.
 - [x] Prompt 10 — Agent layer / close-summary generation.
-- [ ] Prompt 11 — Demo data seeding.
-- [ ] Prompts 12–18 — queued.
+- [x] Prompt 11 — Demo data seeding.
+- [ ] Prompt 12 — Celery scheduled sync.
+- [ ] Prompts 13–18 — queued.
 
 ## Decision / blocker notes
 - Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
@@ -40,4 +39,4 @@ Step 11 — Demo Data Seeding.
 - See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-Implement Prompt 11 test-first, keep tests green, commit, then move to Prompt 12.
+Implement Prompt 12 test-first, keep tests green, commit, then move to Prompt 13.

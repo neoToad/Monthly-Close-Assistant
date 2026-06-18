@@ -3,11 +3,11 @@
 Items deferred to later stages (per the prompt sequence). Moved here from the running
 plan so the current step stays uncluttered.
 
-## Current — Prompt 11
-- Demo data seeding (`seed_demo_data` management command).
+## Current — Prompt 12
+- Celery scheduled sync.
+- Redis broker setup.
 
 ## Upcoming
-- Prompt 12 — Celery scheduled sync.
 - Prompt 13 — HTMX review dashboard.
 - Prompt 14 — Dashboard access control.
 - Prompt 15 — Dockerize.
