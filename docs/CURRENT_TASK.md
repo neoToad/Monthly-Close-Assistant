@@ -1,22 +1,18 @@
 # Current Task
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 7 complete; starting Prompt 8.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 8 complete; starting Prompt 9.
 
 The foundation stage (Prompts 1–3) is complete and committed on
 `feature/close-assistant-build`.
 
 ## What is actively happening
-Step 8 — Anomaly Detection.
+Step 9 — Idempotency for Reconciliation & Sync.
 
-- Add rule-based anomaly checks on a month's ``Transaction`` data:
-  * vendor amount > 2σ from historical average
-  * duplicate transactions within a 7-day window
-  * new vendors with no prior history
-  * categories with > 200% month-over-month change
-- Create ``Flag`` records with ``flag_type="anomaly"`` and clear reasons.
-- Integrate anomaly detection into `run_reconciliation` so it runs both
-  reconciliation and anomaly checks together.
+- Ensure re-running `run_reconciliation` does not duplicate `Flag` records.
+- Keep `sync_quickbooks` idempotent via `qb_transaction_id`.
+- Make `generate_bank_feed` prompt or require `--force` if bank data already exists
+  for the month.
 - Write tests first (TDD), implement, then commit.
 
 ## Status
@@ -27,8 +23,9 @@ Step 8 — Anomaly Detection.
 - [x] Prompt 5 — Error handling & edge cases (QuickBooks sync).
 - [x] Prompt 6 — Fake bank feed generator.
 - [x] Prompt 7 — Reconciliation logic.
-- [ ] Prompt 8 — Anomaly detection.
-- [ ] Prompts 9–18 — queued.
+- [x] Prompt 8 — Anomaly detection.
+- [ ] Prompt 9 — Idempotency for reconciliation & sync.
+- [ ] Prompts 10–18 — queued.
 
 ## Decision / blocker notes
 - Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
@@ -38,4 +35,4 @@ Step 8 — Anomaly Detection.
 - See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-Implement Prompt 8 test-first, keep tests green, commit, then move to Prompt 9.
+Implement Prompt 9 test-first, keep tests green, commit, then move to Prompt 10.

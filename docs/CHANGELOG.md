@@ -304,3 +304,41 @@ command: 'run_reconciliation'`), then implemented to green. Full suite: **71 tes
   noted in `docs/TODO.md`. Per the foundation prompt's instruction, this is recorded
   here explicitly.
 - Retry/backoff on QuickBooks API errors is deferred to Prompt 5.
+
+---
+
+## Step 8 — `feat(core): step 8 — rule-based anomaly detection integrated with reconciliation`
+
+Added rule-based anomaly detection on a month's ``Transaction`` records and
+wired it into the `run_reconciliation` command.
+
+- **New package `core/anomaly/`** with `rules.py`:
+  - Vendor amounts more than 2 standard deviations from that vendor's historical
+    average (or outside a constant historical average when σ = 0).
+  - Duplicate transactions (same vendor + amount within a 7-day window).
+  - New vendors with no transaction history before the current month.
+  - Categories whose total spend changed more than 200% compared to the prior month.
+  - Every hit creates a ``Flag`` with ``flag_type="anomaly"``, a clear reason, and
+    a severity.
+- **`run_reconciliation` command** now calls `run_anomaly_detection(month)` after
+  reconciliation and prints an anomaly-detection summary.
+- Defensive handling for empty months and Pandas chained-assignment warnings.
+
+**TDD:** extended `core/tests/test_management.py` with 6 anomaly tests first:
+no-data exit, vendor z-score anomaly, duplicate within 7 days, new vendor,
+category month-over-month jump > 200%, and insufficient history skipping z-score.
+Confirmed failures (missing `run_anomaly_detection`, empty-month `KeyError`), then
+implemented to green. Full suite: **77 tests pass**.
+
+**Improvements beyond the spec:**
+- Separated anomaly rules into a dedicated service module (`core/anomaly/rules.py`)
+  so they can be reused outside the management command.
+- Used `bulk_create` inside an atomic transaction for efficient flag insertion.
+- Lower-cased vendor/category names for case-tolerant grouping and matching.
+- Handled the σ = 0 edge case by flagging any current-month amount that differs
+  from a constant historical average, rather than silently skipping the vendor.
+- Guarded category MoM checks so categories with no prior-month baseline do not
+  produce spurious flags.
+
+**Deviations:** None. Live QuickBooks data was not used; all anomaly checks are
+exercised against generated `Transaction` records.

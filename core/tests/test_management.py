@@ -146,3 +146,85 @@ class RunReconciliationCommandTests(TestCase):
         flags = Flag.objects.filter(flag_type=FlagType.RECONCILIATION)
         self.assertEqual(flags.count(), 1)
         self.assertIn("gl", flags.first().reason.lower())
+
+
+class AnomalyDetectionCommandTests(TestCase):
+    def test_no_data_exits_cleanly(self) -> None:
+        out = StringIO()
+        call_command("run_reconciliation", "2025-01", stdout=out)
+        self.assertIn("no data", out.getvalue().lower())
+        self.assertEqual(Flag.objects.filter(flag_type=FlagType.ANOMALY).count(), 0)
+
+    def test_vendor_amount_zscore_anomaly(self) -> None:
+        # Historical data for Acme in prior months.
+        for i in range(5):
+            _make_txn(
+                qb_transaction_id=f"QB-hist-{i}",
+                vendor="Acme Corp",
+                amount=Decimal("100.00"),
+                date=dt.date(2024, 12, 1 + i),
+            )
+        # This month: one normal, one way above the historical average.
+        _make_txn(
+            qb_transaction_id="QB-normal", vendor="Acme Corp",
+            amount=Decimal("100.00"), date=dt.date(2025, 1, 10),
+        )
+        _make_txn(
+            qb_transaction_id="QB-outlier", vendor="Acme Corp",
+            amount=Decimal("500.00"), date=dt.date(2025, 1, 15),
+        )
+        call_command("run_reconciliation", "2025-01")
+        flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
+        self.assertGreaterEqual(flags.count(), 1)
+        self.assertTrue(
+            any("acme" in f.reason.lower() and "standard deviation" in f.reason.lower()
+                for f in flags),
+            f"Expected z-score anomaly reason, got: {[f.reason for f in flags]}",
+        )
+
+    def test_duplicate_within_7_day_window(self) -> None:
+        _make_txn(qb_transaction_id="QB-dup-1", amount=Decimal("75.00"), date=dt.date(2025, 1, 5))
+        _make_txn(qb_transaction_id="QB-dup-2", amount=Decimal("75.00"), date=dt.date(2025, 1, 7))
+        call_command("run_reconciliation", "2025-01")
+        flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
+        self.assertGreaterEqual(flags.count(), 1)
+        self.assertTrue(
+            any("duplicate" in f.reason.lower() for f in flags),
+            f"Expected duplicate anomaly, got: {[f.reason for f in flags]}",
+        )
+
+    def test_new_vendor_anomaly(self) -> None:
+        _make_txn(qb_transaction_id="QB-new", vendor="Brand New Vendor LLC", amount=Decimal("123.45"))
+        call_command("run_reconciliation", "2025-01")
+        flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
+        self.assertEqual(flags.count(), 1)
+        self.assertIn("new vendor", flags.first().reason.lower())
+
+    def test_category_mom_greater_than_200_percent(self) -> None:
+        _make_txn(
+            qb_transaction_id="QB-dec", category="Software",
+            amount=Decimal("100.00"), date=dt.date(2024, 12, 15),
+        )
+        for i in range(4):
+            _make_txn(
+                qb_transaction_id=f"QB-inc-{i}", category="Software",
+                amount=Decimal("100.00"), date=dt.date(2025, 1, 10 + i),
+            )
+        call_command("run_reconciliation", "2025-01")
+        flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
+        self.assertGreaterEqual(flags.count(), 1)
+        self.assertTrue(
+            any("software" in f.reason.lower() and "month" in f.reason.lower()
+                for f in flags),
+            f"Expected category MoM anomaly, got: {[f.reason for f in flags]}",
+        )
+
+    def test_insufficient_history_skips_zscore(self) -> None:
+        _make_txn(qb_transaction_id="QB-1", vendor="Solo Vendor", amount=Decimal("100.00"))
+        _make_txn(qb_transaction_id="QB-2", vendor="Solo Vendor", amount=Decimal("500.00"))
+        call_command("run_reconciliation", "2025-01")
+        z_flags = [
+            f for f in Flag.objects.filter(flag_type=FlagType.ANOMALY)
+            if "standard deviation" in f.reason.lower()
+        ]
+        self.assertEqual(len(z_flags), 0)
