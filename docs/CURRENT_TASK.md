@@ -2,20 +2,27 @@
 
 ## Stage
 
-Build (Prompts 4–18) — IN PROGRESS. Prompt 16 complete; starting Prompt 17.
+Build (Prompts 4–18) — IN PROGRESS. Prompt 17 complete; starting Prompt 18.
 
 ## Current task
 
-Step 17 — Deploy to Railway. Document the deployment approach and any required
-configuration (e.g., environment variables, Postgres/Redis add-ons, Dockerfile).
-If Railway credentials are not available, record what would be done and note that
-it was not exercised.
+Step 18 — README. Write a comprehensive project README that explains what the Monthly
+Close Assistant does, how to set it up locally, how to run tests, how to use the key
+management commands, and how to deploy via Docker / Railway.
 
 ## Completion criteria
 
-- Document Railway deployment setup in `docs/DEPLOY.md` or the README.
-- Update `docs/TODO.md` and `docs/CHANGELOG.md`.
-- Commit with the Prompt 17 message and push.
+- `README.md` at the repo root covers:
+  - Project overview and high-level architecture.
+  - Local setup (clone, env, Docker compose, migrations).
+  - Running tests (`python manage.py test` and inside Docker).
+  - Management commands (sync_quickbooks, run_reconciliation, generate_close_summary,
+    seed_demo_data).
+  - Dashboard and access control.
+  - Deployment notes (Railway, CI).
+- Update `docs/CHANGELOG.md` and `docs/TODO.md`.
+- Commit with the Prompt 18 message and push.
+- Stop after this commit; do not start stretch prompts or open a PR.
 
 ## Branch
 

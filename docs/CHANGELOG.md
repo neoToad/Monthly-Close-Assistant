@@ -653,3 +653,33 @@ did not exist. Implemented the workflow and the tests passed. Full suite:
 **Deviations:** None. The workflow does not deploy; deployment is deferred to
 Prompt 17.
 
+---
+
+## Step 17 — `feat(core): step 17 — Railway deployment guide`
+
+Documented the Railway deployment approach without exercising a live deploy (no
+Railway credentials were available).
+
+- **New `docs/DEPLOY.md`** covering:
+  - Creating a Railway project from the GitHub repo.
+  - Adding managed PostgreSQL and Redis services.
+  - Mapping environment variables (`SECRET_KEY`, `DATABASE_URL`,
+    `CELERY_BROKER_URL`, `ALLOWED_HOSTS`, QuickBooks OAuth vars, etc.).
+  - Starting the web container from the existing `Dockerfile`.
+  - Running Celery worker and beat services for background tasks.
+  - Post-deploy verification steps.
+- Explicit note that the live Railway deploy was **not exercised** in this build.
+
+**TDD:** added `core/tests/test_deploy.py` with 4 tests first: doc exists, mentions
+Railway, lists required env vars, and records the "not exercised" caveat. Confirmed
+failures (`docs/DEPLOY.md` missing), then implemented to green. Full suite:
+**114 tests pass** on the host.
+
+**Improvements beyond the spec:**
+- Kept deployment docs separate from the upcoming README so deployment details can be
+  updated without touching the main project intro.
+- Documented both `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` because Railway Redis
+  provides a single URL that is used for both.
+
+**Deviations:** None. No live deploy was performed; this is recorded explicitly.
+
