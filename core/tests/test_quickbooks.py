@@ -205,3 +205,81 @@ class RefreshTokensTests(SimpleTestCase):
         # expiry datetimes are in the future.
         self.assertGreater(result["access_token_expires_at"], timezone.now())
         self.assertGreater(result["refresh_token_expires_at"], timezone.now())
+
+
+# ---------------------------------------------------------------------------
+# environment config + API base URL (Prompt 4)
+# ---------------------------------------------------------------------------
+
+
+class EnvironmentConfigTests(SimpleTestCase):
+    def test_environment_defaults_to_sandbox(self) -> None:
+        with override_settings(QB_ENVIRONMENT=""):
+            self.assertEqual(qb_client.get_environment(), "sandbox")
+
+    def test_environment_reads_from_settings(self) -> None:
+        with override_settings(QB_ENVIRONMENT="production"):
+            self.assertEqual(qb_client.get_environment(), "production")
+
+    def test_environment_is_case_normalized(self) -> None:
+        with override_settings(QB_ENVIRONMENT="PRODUCTION"):
+            self.assertEqual(qb_client.get_environment(), "production")
+
+    def test_invalid_environment_raises(self) -> None:
+        with override_settings(QB_ENVIRONMENT="staging"):
+            with self.assertRaises(ValueError):
+                qb_client.get_environment()
+
+    def test_sandbox_api_base_url(self) -> None:
+        self.assertEqual(
+            qb_client.get_api_base_url("sandbox"),
+            "https://sandbox-quickbooks.api.intuit.com/v3/company/",
+        )
+
+    def test_production_api_base_url(self) -> None:
+        self.assertEqual(
+            qb_client.get_api_base_url("production"),
+            "https://quickbooks.api.intuit.com/v3/company/",
+        )
+
+    def test_make_auth_client_uses_configured_environment(self) -> None:
+        with override_settings(QB_ENVIRONMENT="production"), \
+             mock.patch.object(qb_client, "config") as mock_config:
+            mock_config.side_effect = lambda key, default="": {
+                "QB_CLIENT_ID": "id",
+                "QB_CLIENT_SECRET": "secret",
+                "QB_REDIRECT_URI": "http://localhost/callback/",
+            }.get(key, default)
+            client = qb_client.make_auth_client(realm_id="12345")
+            self.assertEqual(client.environment, "production")
+
+
+# ---------------------------------------------------------------------------
+# token expiry with refresh buffer (Prompt 4)
+# ---------------------------------------------------------------------------
+
+
+class TokenExpiryBufferTests(TestCase):
+    def test_not_expired_when_within_buffer(self) -> None:
+        from core.models import QBToken
+
+        token = QBToken(
+            realm_id="12345",
+            access_token_encrypted="at",
+            refresh_token_encrypted="rt",
+            access_token_expires_at=timezone.now() + dt.timedelta(minutes=10),
+        )
+        # With a 15-minute buffer, a token expiring in 10 minutes is considered expired.
+        self.assertTrue(token.is_access_token_expired(buffer_minutes=15))
+
+    def test_not_expired_when_beyond_buffer(self) -> None:
+        from core.models import QBToken
+
+        token = QBToken(
+            realm_id="12345",
+            access_token_encrypted="at",
+            refresh_token_encrypted="rt",
+            access_token_expires_at=timezone.now() + dt.timedelta(minutes=30),
+        )
+        # With a 15-minute buffer, a token expiring in 30 minutes is still valid.
+        self.assertFalse(token.is_access_token_expired(buffer_minutes=15))

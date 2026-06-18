@@ -23,6 +23,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from decouple import config
+from django.conf import settings
 from django.utils import timezone
 from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
@@ -39,12 +40,48 @@ logger = logging.getLogger(__name__)
 #: Prompt 4 will make this configurable via ``QB_ENVIRONMENT``.
 QB_ENVIRONMENT = "sandbox"
 
+#: API base URL templates for each QuickBooks environment (Prompt 4).
+API_BASE_URLS = {
+    "sandbox": "https://sandbox-quickbooks.api.intuit.com/v3/company/",
+    "production": "https://quickbooks.api.intuit.com/v3/company/",
+}
+
 #: The QuickBooks record types pulled during sync, mapped to their source_type.
 SYNC_OBJECTS = {
     "Purchase": Purchase,
     "Deposit": Deposit,
     "JournalEntry": JournalEntry,
 }
+
+
+# ---------------------------------------------------------------------------
+# Environment + API base URL (Prompt 4)
+# ---------------------------------------------------------------------------
+
+
+def get_environment() -> str:
+    """Return the configured QuickBooks environment (``sandbox`` or ``production``).
+
+    Reads ``QB_ENVIRONMENT`` from Django settings (sourced from the environment via
+    python-decouple). Defaults to ``sandbox`` when unset or blank. Raises
+    ``ValueError`` for any other value.
+    """
+    env = (getattr(settings, "QB_ENVIRONMENT", "") or "sandbox").strip().lower()
+    if env not in ("sandbox", "production"):
+        raise ValueError(f"QB_ENVIRONMENT must be 'sandbox' or 'production', got {env!r}")
+    return env
+
+
+def get_api_base_url(environment: Optional[str] = None) -> str:
+    """Return the QuickBooks v3 API base URL for ``environment``.
+
+    Defaults to the currently configured environment. The returned URL ends with
+    ``company/`` so callers can append a realm id.
+    """
+    env = environment or get_environment()
+    if env not in API_BASE_URLS:
+        raise ValueError(f"Unknown QuickBooks environment: {env!r}")
+    return API_BASE_URLS[env]
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +103,7 @@ def make_auth_client(realm_id: Optional[str] = None) -> AuthClient:
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
-        environment=QB_ENVIRONMENT,
+        environment=get_environment(),
         realm_id=realm_id,
     )
 
@@ -113,11 +150,12 @@ def refresh_tokens(auth_client: AuthClient) -> dict:
 
 def build_quickbooks_client(qb_token) -> QuickBooks:
     """Build a ``QuickBooks`` API client from a stored ``QBToken``."""
+    environment = get_environment()
     auth_client = AuthClient(
         client_id=config("QB_CLIENT_ID", default=""),
         client_secret=config("QB_CLIENT_SECRET", default=""),
         redirect_uri=config("QB_REDIRECT_URI", default=""),
-        environment=QB_ENVIRONMENT,
+        environment=environment,
         access_token=qb_token.get_access_token(),
         refresh_token=qb_token.get_refresh_token(),
         realm_id=qb_token.realm_id,

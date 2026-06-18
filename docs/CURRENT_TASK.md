@@ -1,32 +1,33 @@
 # Current Task
 
 ## Stage
-**Foundation (Prompts 1–3) — COMPLETE.** The next stage begins at Prompt 4.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 4 complete; starting Prompt 5.
 
-## What was just finished
-Step 3 — QuickBooks Online OAuth 2.0 + `sync_quickbooks` (TDD, mocked). Committed and
-pushed. See CHANGELOG.md "Step 3".
+The foundation stage (Prompts 1–3) is complete and committed on
+`feature/close-assistant-build`.
 
-- OAuth start + callback views (`/quickbooks/oauth/start/`,
-  `/quickbooks/oauth/callback/`) wired via `core/urls.py`.
-- `core/quickbooks/client.py` (OAuth, token-refresh, pull, normalize, sync) +
-  `core/quickbooks/tokens.py` (Fernet encryption-at-rest + `QBToken` persistence).
-- `QBToken` model + migration `core.0002_qbtoken`; admin hides token fields.
-- `sync_quickbooks` management command (idempotent on `qb_transaction_id`).
-- Tests: `core/tests/test_quickbooks.py` + `core/tests/test_views.py`; full suite
-  **46 green**.
+## What is actively happening
+Step 5 — Error Handling & Edge Cases (QuickBooks Sync).
+
+- Catch mid-sync access-token expiry, refresh the token once, and retry the request.
+- Add exponential backoff for QuickBooks API rate limiting / timeouts (max 3 attempts).
+- Ensure all failures produce clear log output (no silent crashes).
+- Persist refreshed tokens back to ``QBToken`` after a refresh.
 
 ## Status
-- [x] Prompt 1 — scaffold (committed `5273be9`).
-- [x] Prompt 2 — models/migrations/admin (committed `206f47a`).
-- [x] Prompt 3 — QuickBooks OAuth + sync (committed this step).
-- [x] Tracking files updated; branch pushed.
+- [x] Prompt 1 — scaffold.
+- [x] Prompt 2 — models/migrations/admin.
+- [x] Prompt 3 — QuickBooks OAuth + sync.
+- [x] Prompt 4 — QuickBooks secrets & environment config.
+- [ ] Prompt 5 — Error handling & edge cases (QuickBooks sync).
+- [ ] Prompts 6–18 — queued.
 
-## Decision / blocker notes (carried into Prompt 4+)
-- Live sandbox pull was **not** exercised (no credentials); mocked tests only.
-- Intuit `environment` hardcoded `"sandbox"` → `QB_ENVIRONMENT` configurable in P4.
-- No retry/backoff → P5.
-- See `docs/TODO.md` for the open follow-ups.
+## Decision / blocker notes
+- Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
+  tests only.
+- Docker test context from `AGENTS.md` applies once Docker is added in Prompt 15;
+  Prompts 4–14 continue to use local Postgres.
+- See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-**Stop here** — per the foundation prompt, do not begin Prompt 4 and do not open a PR.
+Implement Prompt 5 test-first, keep tests green, commit, then move to Prompt 6.

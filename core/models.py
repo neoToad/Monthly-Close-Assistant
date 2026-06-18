@@ -6,6 +6,8 @@ the analysis engine, and the agent-drafted ``CloseSummary`` for human review.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
@@ -237,7 +239,20 @@ class QBToken(models.Model):
 
         return decrypt_value(self.refresh_token_encrypted)
 
-    def is_access_token_expired(self) -> bool:
+    def is_access_token_expired(self, buffer_minutes: Optional[int] = None) -> bool:
+        """Return True when the access token is expired or within the refresh buffer.
+
+        ``buffer_minutes`` defaults to ``QB_TOKEN_REFRESH_BUFFER_MINUTES`` from
+        Django settings (Prompt 4). A token expiring inside that window is treated as
+        expired so it can be refreshed before the QuickBooks API rejects it mid-sync.
+        """
         if self.access_token_expires_at is None:
             return True
-        return self.access_token_expires_at <= timezone.now()
+
+        if buffer_minutes is None:
+            from django.conf import settings
+
+            buffer_minutes = getattr(settings, "QB_TOKEN_REFRESH_BUFFER_MINUTES", 15)
+
+        buffer = dt.timedelta(minutes=int(buffer_minutes))
+        return self.access_token_expires_at <= timezone.now() + buffer

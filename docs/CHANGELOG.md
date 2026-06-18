@@ -148,6 +148,49 @@ no-token error) first; confirmed both modules failed to import for the right rea
   `quickbooks.client.Environments.SANDBOX == 'sandbox'`); `QB_ENVIRONMENT` is
   formalized in Prompt 4.
 
+---
+
+## Step 4 — `feat(core): step 4 — QuickBooks env config, sandbox/production switch`
+
+Hardened QuickBooks environment configuration and token-refresh buffer settings.
+
+- **`.env.example`** now documents every QuickBooks variable:
+  `QB_CLIENT_ID`, `QB_CLIENT_SECRET`, `QB_REDIRECT_URI`, `QB_SANDBOX_COMPANY_ID`,
+  `QB_ENVIRONMENT` (sandbox|production), `QB_TOKEN_REFRESH_BUFFER_MINUTES`, and
+  `QB_TOKEN_ENCRYPTION_KEY`. Each variable has a comment explaining where it comes
+  from and what value to use for local development.
+- **`close_assistant/settings.py`** added `QB_ENVIRONMENT` and
+  `QB_TOKEN_REFRESH_BUFFER_MINUTES` settings, loaded via `python-decouple`.
+- **`core/quickbooks/client.py`** added `get_environment()` (validates
+  sandbox|production, case-insensitive, defaults to sandbox) and `get_api_base_url()`
+  returning the correct v3 API base URL for each environment.
+- **`make_auth_client` / `build_quickbooks_client`** now read `QB_ENVIRONMENT` from
+  settings, so the OAuth and data clients both target the configured QuickBooks
+  environment (sandbox or production).
+- **`QBToken.is_access_token_expired()`** now accepts a `buffer_minutes` argument
+  defaulting to `QB_TOKEN_REFRESH_BUFFER_MINUTES`. Tokens inside that buffer are
+  treated as expired so the sync can refresh proactively before Intuit rejects the
+  request.
+
+**TDD:** extended `core/tests/test_quickbooks.py` and `core/tests/test_scaffold.py`
+with 9 new tests first: environment default/read/validation/case-normalization,
+make_auth_client passes the configured environment, sandbox/production API base
+URLs, and token-expiry buffer behavior. Confirmed failures (`AttributeError` for
+new helpers, `AssertionError` for hardcoded sandbox), then implemented to green.
+Full suite: **55 tests pass**.
+
+**Improvements beyond the spec:**
+- Centralized environment validation in `get_environment()` so the app fails fast
+  with a clear `ValueError` on an invalid `QB_ENVIRONMENT` value.
+- `get_api_base_url()` is exposed as a reusable helper for any future direct API
+  calls (the python-quickbooks client already picks the right host via
+  `AuthClient.environment`, but the explicit URL is useful for logging / links).
+- `QBToken.is_access_token_expired()` preserves backward compatibility: calling it
+  without arguments still uses the configured buffer from settings.
+
+**Deviations:** None. The live QuickBooks sandbox pull remains un-exercised; this
+step only changed configuration and unit-tested the environment switching logic.
+
 **Deviations:**
 - **Live sandbox pull NOT exercised** (no sandbox credentials available). The OAuth
   flow and sync pipeline are fully implemented and unit-tested against mocked

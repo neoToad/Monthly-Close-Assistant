@@ -134,6 +134,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # unset, tokens pass through in plaintext (dev only — a warning is emitted). Prompt 3.
 QB_TOKEN_ENCRYPTION_KEY = config("QB_TOKEN_ENCRYPTION_KEY", default="")
 
+# QuickBooks API environment: "sandbox" or "production". Prompt 4.
+QB_ENVIRONMENT = config("QB_ENVIRONMENT", default="sandbox")
+
+# How many minutes before access-token expiry to treat it as expired and refresh.
+# Prompt 4.
+QB_TOKEN_REFRESH_BUFFER_MINUTES = config("QB_TOKEN_REFRESH_BUFFER_MINUTES", default=15, cast=int)
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
