@@ -158,6 +158,22 @@ class Flag(models.Model):
         reason_preview = (self.reason or "")[:50]
         return f"[{self.severity}] {self.flag_type}: {reason_preview}"
 
+    def display_vendor(self) -> str:
+        """Return the vendor name from whichever side the flag points to."""
+        if self.transaction_id is not None and self.transaction.vendor:
+            return self.transaction.vendor
+        if self.bank_transaction_id is not None and self.bank_transaction.vendor:
+            return self.bank_transaction.vendor
+        return "—"
+
+    def display_amount(self) -> "Decimal | None":
+        """Return the amount from whichever side the flag points to."""
+        if self.transaction_id is not None:
+            return self.transaction.amount
+        if self.bank_transaction_id is not None:
+            return self.bank_transaction.amount
+        return None
+
 
 class CloseSummaryStatus(models.TextChoices):
     """Review state of an agent-drafted close summary."""

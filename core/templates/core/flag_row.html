@@ -1,18 +1,30 @@
-<tr>
-    <td>{{ flag.get_flag_type_display }}</td>
-    <td>{{ flag.get_severity_display }}</td>
-    <td>{{ flag.reason }}</td>
-    <td>
+{% load flag_extras %}
+<div class="ledger-row" id="flag-row-{{ flag.id }}">
+    <div class="ledger-row-main">
+        <div class="ledger-row-primary">
+            <span class="dot {{ flag.status|status_dot_class }}" aria-hidden="true"></span>
+            <span class="vendor">{{ flag.display_vendor }}</span>
+        </div>
+        <div class="reason">{{ flag.reason }}</div>
+    </div>
+    <div class="ledger-row-meta">
+        <span class="amount">{% if flag.display_amount %}${{ flag.display_amount|floatformat:2 }}{% else %}—{% endif %}</span>
         {% if flag.status == "open" %}
-            <button hx-post="{% url 'core:flag_approve' flag.id %}"
-                    hx-target="closest tr"
-                    hx-swap="outerHTML"
-                    class="primary">Approve</button>
-            <button hx-post="{% url 'core:flag_reject' flag.id %}"
-                    hx-target="closest tr"
-                    hx-swap="outerHTML">Reject</button>
+            <div class="actions">
+                <button class="text-btn approve"
+                        hx-post="{% url 'core:flag_approve' flag.id %}"
+                        hx-target="closest .ledger-row"
+                        hx-swap="outerHTML">Approve</button>
+                <button class="text-btn reject"
+                        hx-post="{% url 'core:flag_reject' flag.id %}"
+                        hx-target="closest .ledger-row"
+                        hx-swap="outerHTML">Reject</button>
+            </div>
         {% else %}
-            <span class="muted">{{ flag.get_status_display }}</span>
+            <span class="status-label {{ flag.status }}">
+                <span class="dot {{ flag.status|status_dot_class }}" aria-hidden="true"></span>
+                {{ flag.get_status_display }}
+            </span>
         {% endif %}
-    </td>
-</tr>
+    </div>
+</div>

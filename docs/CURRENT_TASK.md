@@ -6,13 +6,13 @@ Design System (Prompts D1–D7).
 
 ## Current task
 
-**D3 — Flagged Items Table Redesign**
+**D4 — Draft Summary Section**
 
-Restyle the flagged-items list in `core/templates/core/flag_row.html` and
-`core/templates/core/dashboard_content.html` to look like a ledger: hairline row
-dividers, vendor + reason lines, right-aligned tabular amount, colored status
-dot + label, and plain-text Approve/Reject buttons that fade out on resolution.
-Add failing tests first that assert the new row structure.
+Restyle the close-summary block in `core/templates/core/close_summary_section.html`
+to look document-like: a small uppercase eyebrow label, a month label, readable
+summary text with generous line-height and a max content width, a hairline divider,
+and a plain-text "Mark Reviewed" action beside an understated reviewer-notes
+textarea. Add failing tests first.
 
 ## Branch
 
@@ -20,4 +20,4 @@ Add failing tests first that assert the new row structure.
 
 ## Next step
 
-D4 — Draft Summary Section (after D3 is committed and pushed).
+D5 — Empty & Loading States (after D4 is committed and pushed).

@@ -124,3 +124,74 @@ class DashboardHeaderTests(TestCase):
         self.assertIn("2 open", content)
         self.assertIn("1 approved", content)
         self.assertIn("1 rejected", content)
+
+
+class LedgerRowTests(TestCase):
+    """D3 — Flagged items table redesign."""
+
+    def setUp(self) -> None:
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+
+    def _create_flag(self, status: str = "open", vendor: str = "Acme Corp", amount: str = "123.45") -> Flag:
+        from decimal import Decimal
+
+        from core.models import Flag, FlagStatus, Transaction
+
+        counter = getattr(self, "_flag_counter", 0) + 1
+        self._flag_counter = counter
+        txn = Transaction.objects.create(
+            date=dt.date(2025, 1, 15),
+            vendor=vendor,
+            amount=Decimal(amount),
+            qb_transaction_id=f"QB-{counter}-{vendor}",
+            source_type="Purchase",
+        )
+        return Flag.objects.create(
+            flag_type="reconciliation",
+            transaction=txn,
+            reason="Amount mismatch",
+            severity="medium",
+            status=getattr(FlagStatus, status.upper()),
+        )
+
+    def test_open_row_shows_vendor_reason_amount_and_status_dot(self) -> None:
+        flag = self._create_flag()
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        content = resp.content.decode("utf-8")
+        self.assertIn("ledger-row", content)
+        self.assertIn("Acme Corp", content)
+        self.assertIn("Amount mismatch", content)
+        self.assertIn("$123.45", content)
+        self.assertIn('class="dot flag"', content)
+        self.assertIn("Open", content)
+
+    def test_open_row_has_plain_text_action_buttons(self) -> None:
+        flag = self._create_flag()
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        content = resp.content.decode("utf-8")
+        self.assertIn('class="text-btn approve"', content)
+        self.assertIn('class="text-btn reject"', content)
+        self.assertNotIn('class="primary"', content)
+
+    def test_approved_row_replaces_actions_with_confirmed_status(self) -> None:
+        flag = self._create_flag()
+        resp = self.client.post(f"/dashboard/flag/{flag.id}/approve/")
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode("utf-8")
+        self.assertIn("Approved", content)
+        self.assertIn('class="dot confirmed"', content)
+        self.assertNotIn('class="text-btn approve"', content)
+        self.assertNotIn('class="text-btn reject"', content)
+
+    def test_rejected_row_replaces_actions_with_rejected_status(self) -> None:
+        flag = self._create_flag()
+        resp = self.client.post(f"/dashboard/flag/{flag.id}/reject/")
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode("utf-8")
+        self.assertIn("Rejected", content)
+        self.assertIn('class="dot rejected"', content)
+        self.assertNotIn('class="text-btn approve"', content)
+        self.assertNotIn('class="text-btn reject"', content)

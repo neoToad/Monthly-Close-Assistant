@@ -26,21 +26,11 @@
 
     <h3>Open Flags</h3>
     {% if flags %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Type</th>
-                    <th>Severity</th>
-                    <th>Reason</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for flag in flags %}
-                    {% include "core/flag_row.html" %}
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="ledger-list">
+            {% for flag in flags %}
+                {% include "core/flag_row.html" %}
+            {% endfor %}
+        </div>
     {% else %}
         <p class="muted">No open flags for {{ month }}.</p>
     {% endif %}

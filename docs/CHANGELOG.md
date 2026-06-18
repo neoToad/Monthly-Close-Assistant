@@ -798,3 +798,36 @@ ledger header structure and status-strip counts, then implemented to green.
 **Deviations:** None.
 
 ---
+
+## D3 — `feat(ui): D3 — ledger-style flagged-items table`
+
+Redesigned the flagged-items list to look like a ledger:
+
+- Replaced the generic `<table>` in `dashboard_content.html` with a
+  `.ledger-list` of flex rows.
+- Rewrote `core/templates/core/flag_row.html` to show vendor on the primary line,
+  the flag reason as a smaller secondary line, a right-aligned tabular amount with
+  a `$` sign, a colored status dot, and plain-text Approve/Reject buttons that
+  underline on hover.
+- Resolved rows now display a `.status-label` with the matching dot and hide the
+  action buttons.
+- Added `Flag.display_vendor()` and `Flag.display_amount()` helper methods so the
+  row template handles both `Transaction`-linked and `BankTransaction`-linked flags.
+- Added a `status_dot_class` template filter in `core/templatetags/flag_extras.py`
+  to map FlagStatus values to the ledger dot classes cleanly.
+- Added ledger-row CSS to `tokens.css` (hairline dividers, plain-text buttons,
+  tabular nums, status-label colors).
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+new row structure, action-button styling, and resolved-row rendering, then
+implemented to green.
+
+**Improvements beyond the spec:**
+- Created a small reusable template-tag filter for status-dot classes rather than
+  inlining conditional class logic in the row template.
+- Added model helper methods so the UI can render `Transaction` and `BankTransaction`
+  flags consistently without inline null checks.
+
+**Deviations:** None.
+
+---
