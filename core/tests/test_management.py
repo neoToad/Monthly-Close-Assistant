@@ -163,6 +163,29 @@ class RunReconciliationCommandTests(TestCase):
         self.assertEqual(second_count, first_count)
 
 
+class CloseSummaryCommandTests(TestCase):
+    def test_no_data_creates_draft_summary(self) -> None:
+        from core.models import CloseSummary
+
+        out = StringIO()
+        call_command("generate_close_summary", "2025-01", stdout=out)
+        self.assertEqual(CloseSummary.objects.count(), 1)
+        summary = CloseSummary.objects.first()
+        self.assertEqual(summary.status, "draft")
+        self.assertIn("2025-01", summary.summary_text)
+        self.assertIn("drafted", out.getvalue().lower())
+
+    def test_command_uses_agent_summary(self) -> None:
+        from core.models import CloseSummary
+
+        _make_txn(qb_transaction_id="QB-1", category="Software", amount=Decimal("250.00"))
+        out = StringIO()
+        call_command("generate_close_summary", "2025-01", stdout=out)
+        self.assertEqual(CloseSummary.objects.count(), 1)
+        summary = CloseSummary.objects.first()
+        self.assertIn("Software", summary.summary_text)
+
+
 class AnomalyDetectionCommandTests(TestCase):
     def test_no_data_exits_cleanly(self) -> None:
         out = StringIO()

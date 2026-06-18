@@ -387,3 +387,48 @@ pass (`python manage.py test`).
 
 **Deviations:** None.
 
+---
+
+## Step 10 — `feat(core): step 10 — agent-drafted close summary via LangGraph/LangChain-Anthropic`
+
+Installed an agent framework and built a close-summary generator.
+
+- **New package `core/agent/`** with `summary.py`:
+  - `gather_inputs(month)` collects open ``Flag`` records, monthly category totals,
+    prior-month category totals, and total spend.
+  - `build_prompt()` renders the inputs into a prompt for the LLM and a deterministic
+    fallback.
+  - A single-node **LangGraph** graph (`StateGraph`) whose node calls a Claude model
+    via **LangChain-Anthropic** when ``ANTHROPIC_API_KEY`` is configured.
+  - When no API key is present, the node falls back to a deterministic summary so
+    local development and CI do not require live API access.
+  - `draft_close_summary(month)` runs the graph and saves/updates a
+    ``CloseSummary`` with ``status="draft"`` using ``update_or_create`` (idempotent).
+- **New management command `generate_close_summary`** that drafts and prints the
+  summary for a given month.
+- Added `langchain`, `langchain-anthropic`, and `langgraph` to `requirements.txt`.
+- Added `ANTHROPIC_API_KEY` and optional `CLOSE_SUMMARY_MODEL` to `.env.example`.
+
+**TDD:** created `core/tests/test_agent.py` and extended
+`core/tests/test_management.py` with 7 tests first: gather_inputs returns category
+ totals / open flags only, fallback summary without API key, deterministic fallback
+contains inputs, re-running updates existing summary, fake LLM client injection,
+and the `generate_close_summary` command creates a draft. Confirmed failures
+(`ModuleNotFoundError: core.agent`, `Unknown command: 'generate_close_summary'`),
+then implemented to green. Full suite: **87 tests pass**.
+
+**Improvements beyond the spec:**
+- The agent module is fully mockable: `draft_close_summary(month, llm=...)` accepts
+  a prebuilt LangChain runnable for tests or custom pipelines.
+- Close summaries are idempotent via `update_or_create`; running the command twice
+  updates the existing draft instead of creating duplicates.
+- Category totals exclude blank categories and include prior-month comparisons for
+  context.
+- Open-flag filtering scopes to the target month and ignores rejected flags.
+
+**Deviations:**
+- Live Anthropic summary generation was **not exercised** (no Anthropic API key
+  available). The LangGraph/LangChain integration is implemented and the LLM path
+  is unit-tested with a fake client; the deterministic fallback is used in the
+  standard test suite.
+
