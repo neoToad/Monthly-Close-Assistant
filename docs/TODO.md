@@ -3,12 +3,10 @@
 Items deferred to later stages (per the prompt sequence). Moved here from the running
 plan so the current step stays uncluttered.
 
-## Current — Prompt 13
-- HTMX review dashboard (`/dashboard/`).
-- Month selector, flags table, approve/reject actions, close-summary section.
+## Current — Prompt 14
+- Dashboard access control (`@login_required`).
 
 ## Upcoming
-- Prompt 14 — Dashboard access control.
 - Prompt 15 — Dockerize.
 - Prompt 16 — CI/CD.
 - Prompt 17 — Deploy to Railway (or document as not exercised if no credentials).

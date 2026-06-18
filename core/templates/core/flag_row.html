@@ -1,0 +1,18 @@
+<tr>
+    <td>{{ flag.get_flag_type_display }}</td>
+    <td>{{ flag.get_severity_display }}</td>
+    <td>{{ flag.reason }}</td>
+    <td>
+        {% if flag.status == "open" %}
+            <button hx-post="{% url 'core:flag_approve' flag.id %}"
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                    class="primary">Approve</button>
+            <button hx-post="{% url 'core:flag_reject' flag.id %}"
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">Reject</button>
+        {% else %}
+            <span class="muted">{{ flag.get_status_display }}</span>
+        {% endif %}
+    </td>
+</tr>

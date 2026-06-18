@@ -1,0 +1,20 @@
+<h3>Close Summary</h3>
+{% if summary %}
+    <p class="muted">Status: {{ summary.get_status_display }}</p>
+    <pre>{{ summary.summary_text }}</pre>
+    {% if summary.status == "draft" %}
+        <form hx-post="{% url 'core:summary_review' summary.month %}"
+              hx-target="#summary-section"
+              hx-swap="outerHTML">
+            <label for="reviewer-notes">Reviewer notes</label><br>
+            <textarea id="reviewer-notes" name="reviewer_notes" rows="3" cols="60"></textarea><br>
+            <button type="submit" class="primary">Mark Reviewed</button>
+        </form>
+    {% else %}
+        {% if summary.reviewer_notes %}
+            <p><strong>Reviewer notes:</strong> {{ summary.reviewer_notes }}</p>
+        {% endif %}
+    {% endif %}
+{% else %}
+    <p class="muted">No close summary for {{ month }}.</p>
+{% endif %}

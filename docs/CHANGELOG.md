@@ -511,3 +511,41 @@ the task calls `sync_quickbooks`. Confirmed failures (`ModuleNotFoundError` for
 
 **Deviations:** None. The nightly beat schedule is configured; live Redis and a
 running worker are not required for the test suite.
+
+---
+
+## Step 13 — `feat(core): step 13 — HTMX review dashboard`
+
+Built the `/dashboard/` review interface for monthly close review.
+
+- **New dashboard views** in `core/views.py`:
+  - `dashboard` — renders the dashboard for a selected month.
+  - `flag_approve` / `flag_reject` — POST actions that update a flag's status and
+    return the updated table row partial.
+  - `summary_review` — POST action that marks a ``CloseSummary`` reviewed and saves
+    reviewer notes, returning the updated summary partial.
+- **URL routes** added in `core/urls.py`:
+  - `/dashboard/`
+  - `/dashboard/flag/<id>/approve/` and `/dashboard/flag/<id>/reject/`
+  - `/dashboard/summary/<month>/review/`
+- **Templates** under `core/templates/core/`:
+  - `dashboard.html` — full page extending `base.html`.
+  - `dashboard_content.html` — partial swapped by the month selector (`hx-get`).
+  - `flag_row.html` — partial row with Approve/Reject buttons (`hx-post`).
+  - `close_summary_section.html` — partial summary block with Mark Reviewed form.
+
+**TDD:** created `core/tests/test_dashboard.py` with 5 tests first: dashboard
+renders flags and summary, HTMX partial response, flag approve, flag reject, and
+close-summary review. Confirmed failures (`NoReverseMatch`), then implemented to
+green. Full suite: **98 tests pass**.
+
+**Improvements beyond the spec:**
+- The month selector uses HTMX to fetch the partial dashboard content and updates
+  the URL via `hx-push-url`.
+- Flag actions return only the swapped row, keeping the rest of the page intact.
+- The summary section is a separate partial so the review form can update in place.
+- Open flags are scoped to the selected month and sorted newest-first.
+
+**Deviations:** None. Access control (login required) is intentionally deferred to
+Prompt 14 per the spec.
+

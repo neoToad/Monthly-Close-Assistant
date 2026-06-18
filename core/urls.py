@@ -16,4 +16,8 @@ app_name = "core"
 urlpatterns = [
     path("quickbooks/oauth/start/", views.qb_oauth_start, name="qb_oauth_start"),
     path("quickbooks/oauth/callback/", views.qb_oauth_callback, name="qb_oauth_callback"),
+    path("dashboard/", views.dashboard, name="dashboard"),
+    path("dashboard/flag/<int:flag_id>/approve/", views.flag_approve, name="flag_approve"),
+    path("dashboard/flag/<int:flag_id>/reject/", views.flag_reject, name="flag_reject"),
+    path("dashboard/summary/<str:month>/review/", views.summary_review, name="summary_review"),
 ]

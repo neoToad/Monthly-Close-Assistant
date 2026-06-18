@@ -1,0 +1,40 @@
+<div id="dashboard-content">
+    <h2>Review Dashboard — {{ month }}</h2>
+
+    <label for="month-select" class="muted">Month</label>
+    <select id="month-select" name="month"
+            hx-get="{% url 'core:dashboard' %}"
+            hx-target="#dashboard-content"
+            hx-push-url="true">
+        {% for m in months %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
+        {% empty %}
+            <option value="{{ month }}" selected>{{ month }}</option>
+        {% endfor %}
+    </select>
+
+    <h3>Open Flags</h3>
+    {% if flags %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Severity</th>
+                    <th>Reason</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for flag in flags %}
+                    {% include "core/flag_row.html" %}
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">No open flags for {{ month }}.</p>
+    {% endif %}
+
+    <div id="summary-section">
+        {% include "core/close_summary_section.html" %}
+    </div>
+</div>

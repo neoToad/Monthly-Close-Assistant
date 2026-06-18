@@ -1,18 +1,16 @@
 # Current Task
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 12 complete; starting Prompt 13.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 13 complete; starting Prompt 14.
 
 The foundation stage (Prompts 1–3) is complete and committed on
 `feature/close-assistant-build`.
 
 ## What is actively happening
-Step 13 — HTMX Review Dashboard.
+Step 14 — Dashboard Access Control.
 
-- Build `/dashboard/` with a month selector (`hx-get`).
-- Show a table of open flags with Approve/Reject buttons (`hx-post` partial row swap).
-- Show a CloseSummary draft section with a Mark Reviewed action and reviewer notes
-  field.
+- Require login on `/dashboard/` and all flag / close-summary action views.
+- Use Django's built-in auth (`@login_required`).
 - Write tests first (TDD), implement, then commit.
 
 ## Status
@@ -28,8 +26,9 @@ Step 13 — HTMX Review Dashboard.
 - [x] Prompt 10 — Agent layer / close-summary generation.
 - [x] Prompt 11 — Demo data seeding.
 - [x] Prompt 12 — Celery scheduled sync.
-- [ ] Prompt 13 — HTMX review dashboard.
-- [ ] Prompts 14–18 — queued.
+- [x] Prompt 13 — HTMX review dashboard.
+- [ ] Prompt 14 — Dashboard access control.
+- [ ] Prompts 15–18 — queued.
 
 ## Decision / blocker notes
 - Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
@@ -41,4 +40,4 @@ Step 13 — HTMX Review Dashboard.
 - See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-Implement Prompt 13 test-first, keep tests green, commit, then move to Prompt 14.
+Implement Prompt 14 test-first, keep tests green, commit, then move to Prompt 15.
