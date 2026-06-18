@@ -19,8 +19,9 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import secrets
+import time
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from decouple import config
 from django.conf import settings
@@ -28,6 +29,7 @@ from django.utils import timezone
 from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from quickbooks import QuickBooks
+from quickbooks.exceptions import AuthorizationException, QuickbooksException
 from quickbooks.objects.deposit import Deposit
 from quickbooks.objects.journalentry import JournalEntry
 from quickbooks.objects.purchase import Purchase
@@ -46,12 +48,102 @@ API_BASE_URLS = {
     "production": "https://quickbooks.api.intuit.com/v3/company/",
 }
 
-#: The QuickBooks record types pulled during sync, mapped to their source_type.
 SYNC_OBJECTS = {
     "Purchase": Purchase,
     "Deposit": Deposit,
     "JournalEntry": JournalEntry,
 }
+
+
+#: Exceptions treated as transient network/API failures worthy of exponential backoff.
+RETRYABLE_EXCEPTIONS = (
+    QuickbooksException,
+    ConnectionError,
+    TimeoutError,
+)
+
+
+# ---------------------------------------------------------------------------
+# Token refresh + retry wrapper (Prompt 5)
+# ---------------------------------------------------------------------------
+
+
+def refresh_and_store_tokens(qb_token) -> Any:
+    """Refresh the access token for ``qb_token`` and persist the result.
+
+    Builds a fresh ``AuthClient``, seeds it with the stored refresh token, calls
+    ``AuthClient.refresh()``, and writes the new tokens back to ``QBToken`` via
+    ``store_tokens``. Returns the refreshed ``QBToken`` row.
+    """
+    from core.quickbooks.tokens import store_tokens
+
+    auth_client = make_auth_client(realm_id=qb_token.realm_id)
+    auth_client.access_token = qb_token.get_access_token()
+    auth_client.refresh_token = qb_token.get_refresh_token()
+    auth_client.refresh()
+    return store_tokens(auth_client, realm_id=qb_token.realm_id)
+
+
+def call_with_retry(
+    qb_client: QuickBooks,
+    qb_token: Optional[Any],
+    func: Callable,
+    *args,
+    **kwargs,
+) -> Any:
+    """Execute ``func(qb_client, *args, **kwargs)`` with auth refresh and retry logic.
+
+    * If ``qb_token`` is expired or inside the refresh buffer, refresh proactively
+      before the first attempt.
+    * On ``AuthorizationException`` (mid-sync token expiry), refresh once and retry.
+    * On transient errors (QuickbooksException, ConnectionError, TimeoutError), retry
+      up to 3 more times with exponential backoff (2, 4, 8 seconds).
+    * All retry/failure paths are logged clearly; the final exception is re-raised.
+    """
+    if qb_token is not None and qb_token.is_access_token_expired():
+        logger.info(
+            "QuickBooks access token expired or within refresh buffer; refreshing before sync."
+        )
+        qb_token = refresh_and_store_tokens(qb_token)
+        qb_client = build_quickbooks_client(qb_token)
+
+    try:
+        return func(qb_client, *args, **kwargs)
+    except AuthorizationException as exc:
+        logger.warning(
+            "QuickBooks authorization error mid-sync: %s. Refreshing token and retrying once.",
+            exc,
+        )
+        if qb_token is None:
+            logger.error("No stored token to refresh; failing loudly.")
+            raise
+        qb_token = refresh_and_store_tokens(qb_token)
+        qb_client = build_quickbooks_client(qb_token)
+        return func(qb_client, *args, **kwargs)
+    except RETRYABLE_EXCEPTIONS as exc:
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            sleep_seconds = 2 ** attempt
+            logger.warning(
+                "QuickBooks API transient error (attempt %s/%s): %s. Retrying in %ss.",
+                attempt,
+                max_attempts,
+                exc,
+                sleep_seconds,
+            )
+            time.sleep(sleep_seconds)
+            try:
+                return func(qb_client, *args, **kwargs)
+            except RETRYABLE_EXCEPTIONS as retry_exc:
+                exc = retry_exc
+                if attempt == max_attempts:
+                    logger.error(
+                        "QuickBooks API still failing after %s attempts: %s",
+                        max_attempts,
+                        exc,
+                    )
+                    raise
+        raise  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +260,18 @@ def build_quickbooks_client(qb_token) -> QuickBooks:
     )
 
 
-def pull_raw_records(qb_client: QuickBooks) -> dict:
-    """Pull all Purchase / Deposit / JournalEntry records as a dict of lists."""
+
+def pull_raw_records(qb_client: QuickBooks, qb_token: Optional[Any] = None) -> dict:
+    """Pull all Purchase / Deposit / JournalEntry records as a dict of lists.
+
+    Wraps each object query with ``call_with_retry`` so mid-sync auth expiry and
+    transient API errors are handled automatically (Prompt 5).
+    """
+    def _fetch(model, client):
+        return model.all(qb=client)
+
     return {
-        source_type: model.all(qb=qb_client)
+        source_type: call_with_retry(qb_client, qb_token, _fetch, model)
         for source_type, model in SYNC_OBJECTS.items()
     }
 
@@ -250,13 +350,26 @@ def normalize_record(record: Any, source_type: str) -> Optional[dict]:
     }
 
 
-def sync_transactions(qb_client: QuickBooks) -> dict:
+def sync_transactions(qb_client: QuickBooks, qb_token: Optional[Any] = None) -> dict:
     """Pull QuickBooks records and upsert them into ``Transaction`` (idempotent).
 
     Idempotency is keyed on ``qb_transaction_id``: existing rows are skipped (not
-    overwritten). Returns a counts summary.
+    overwritten). ``qb_token`` is passed through to ``pull_raw_records`` so auth
+    expiry and transient API errors are retried automatically (Prompt 5). Returns
+    a counts summary, or one with ``errors=1`` and ``error_message`` when the API
+    calls ultimately fail.
     """
-    raw = pull_raw_records(qb_client)
+    try:
+        raw = pull_raw_records(qb_client, qb_token=qb_token)
+    except Exception as exc:  # noqa: BLE001 — final API failure is reported, not crashed
+        logger.exception("sync_quickbooks: failed to pull records from QuickBooks")
+        return {
+            "created": 0,
+            "skipped": 0,
+            "errors": 1,
+            "per_type": {},
+            "error_message": str(exc),
+        }
     created = skipped = 0
     per_type: dict = {}
 

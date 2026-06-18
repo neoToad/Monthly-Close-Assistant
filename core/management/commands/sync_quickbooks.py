@@ -3,9 +3,8 @@
 Pulls Purchase / Deposit / JournalEntry records from QuickBooks Online for the
 configured (sandbox) realm, normalizes each into a ``Transaction``, and skips any
 already present (matched on ``qb_transaction_id``). Uses the stored ``QBToken`` to
-authenticate; raises ``CommandError`` when no token is stored.
-
-Retry/backoff is deferred to Prompt 5.
+authenticate; raises ``CommandError`` when no token is stored. Retry/backoff and
+mid-sync token refresh are handled by ``core.quickbooks.client`` (Prompt 5).
 """
 from __future__ import annotations
 
@@ -18,7 +17,8 @@ from core.quickbooks import tokens as qb_tokens
 class Command(BaseCommand):
     help = (
         "Pull Purchase/Deposit/JournalEntry records from QuickBooks and normalize "
-        "them into Transaction rows (idempotent on qb_transaction_id)."
+        "them into Transaction rows (idempotent on qb_transaction_id). Handles token "
+        "expiry and transient API errors automatically."
     )
 
     def handle(self, *args, **options) -> None:
@@ -33,7 +33,12 @@ class Command(BaseCommand):
             f"Syncing QuickBooks realm {token.realm_id}..."
         ))
         qb = qb_client.build_quickbooks_client(token)
-        result = qb_client.sync_transactions(qb)
+        result = qb_client.sync_transactions(qb, qb_token=token)
+
+        if result.get("errors"):
+            raise CommandError(
+                f"Sync failed: {result.get('error_message', 'unknown error')}"
+            )
 
         self.stdout.write(self.style.SUCCESS(
             f"Sync complete: created={result['created']} skipped={result['skipped']} "

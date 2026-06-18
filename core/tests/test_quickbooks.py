@@ -283,3 +283,135 @@ class TokenExpiryBufferTests(TestCase):
         )
         # With a 15-minute buffer, a token expiring in 30 minutes is still valid.
         self.assertFalse(token.is_access_token_expired(buffer_minutes=15))
+
+
+# ---------------------------------------------------------------------------
+# retry + refresh on sync failures (Prompt 5)
+# ---------------------------------------------------------------------------
+
+
+class RetryAndRefreshTests(TestCase):
+    def setUp(self) -> None:
+        from core.models import QBToken
+
+        self.qb_token = QBToken.objects.create(
+            realm_id="12345",
+            access_token_encrypted="old-access",
+            refresh_token_encrypted="old-refresh",
+            access_token_expires_at=timezone.now() + dt.timedelta(minutes=30),
+        )
+
+    def _mock_client(self):
+        client = mock.MagicMock()
+        client.auth_client = mock.MagicMock()
+        return client
+
+    @mock.patch.object(qb_client, "refresh_and_store_tokens")
+    @mock.patch.object(qb_client, "build_quickbooks_client")
+    def test_proactive_refresh_when_token_expired(self, mock_build, mock_refresh) -> None:
+        """If the stored token is already expired, refresh before the first call."""
+        from core.models import QBToken
+
+        expired_token = QBToken(
+            realm_id="12345",
+            access_token_encrypted="old-access",
+            refresh_token_encrypted="old-refresh",
+            access_token_expires_at=timezone.now() - dt.timedelta(minutes=1),
+        )
+        refreshed_token = mock.MagicMock()
+        refreshed_token.realm_id = "12345"
+        mock_refresh.return_value = refreshed_token
+        new_client = self._mock_client()
+        mock_build.return_value = new_client
+
+        calls = []
+
+        def operation(qb):
+            calls.append("op")
+            return "success"
+
+        with mock.patch("core.quickbooks.client.time.sleep"):
+            result = qb_client.call_with_retry(self._mock_client(), expired_token, operation)
+
+        self.assertEqual(result, "success")
+        mock_refresh.assert_called_once_with(expired_token)
+        mock_build.assert_called_once_with(refreshed_token)
+        self.assertEqual(calls, ["op"])
+
+    @mock.patch.object(qb_client, "refresh_and_store_tokens")
+    def test_auth_error_mid_sync_refreshes_and_retries_once(self, mock_refresh) -> None:
+        from quickbooks.exceptions import AuthorizationException
+
+        refreshed_token = mock.MagicMock()
+        refreshed_token.realm_id = "12345"
+        mock_refresh.return_value = refreshed_token
+        refreshed_client = self._mock_client()
+
+        calls = []
+
+        def operation(qb):
+            calls.append("op")
+            if len(calls) == 1:
+                raise AuthorizationException("auth failed", error_code=401)
+            return "success"
+
+        with mock.patch.object(qb_client, "build_quickbooks_client", return_value=refreshed_client), \
+             mock.patch("core.quickbooks.client.time.sleep"):
+            result = qb_client.call_with_retry(self._mock_client(), self.qb_token, operation)
+
+        self.assertEqual(result, "success")
+        self.assertEqual(calls, ["op", "op"])
+        mock_refresh.assert_called_once()
+
+    @mock.patch.object(qb_client, "refresh_and_store_tokens")
+    def test_auth_error_after_refresh_fails_loudly(self, mock_refresh) -> None:
+        from quickbooks.exceptions import AuthorizationException
+
+        refreshed_token = mock.MagicMock()
+        refreshed_token.realm_id = "12345"
+        mock_refresh.return_value = refreshed_token
+
+        def operation(qb):
+            raise AuthorizationException("auth failed", error_code=401)
+
+        with mock.patch.object(qb_client, "build_quickbooks_client", return_value=self._mock_client()), \
+             mock.patch("core.quickbooks.client.time.sleep"), \
+             self.assertRaises(AuthorizationException):
+            qb_client.call_with_retry(self._mock_client(), self.qb_token, operation)
+
+        mock_refresh.assert_called_once()
+
+    def test_transient_error_retries_with_exponential_backoff_then_fails(self) -> None:
+        from quickbooks.exceptions import QuickbooksException
+
+        sleep_calls = []
+
+        def fake_sleep(seconds):
+            sleep_calls.append(seconds)
+
+        def operation(qb):
+            raise QuickbooksException("transient", error_code=10000)
+
+        with mock.patch("core.quickbooks.client.time.sleep", side_effect=fake_sleep), \
+             self.assertRaises(QuickbooksException):
+            qb_client.call_with_retry(self._mock_client(), None, operation)
+
+        # Initial attempt + 3 retries = 4 total calls; 3 sleeps between retries.
+        self.assertEqual(sleep_calls, [2, 4, 8])
+
+    def test_transient_error_succeeds_on_retry(self) -> None:
+        from quickbooks.exceptions import QuickbooksException
+
+        calls = []
+
+        def operation(qb):
+            calls.append("op")
+            if len(calls) < 2:
+                raise QuickbooksException("transient", error_code=10000)
+            return "success"
+
+        with mock.patch("core.quickbooks.client.time.sleep"):
+            result = qb_client.call_with_retry(self._mock_client(), None, operation)
+
+        self.assertEqual(result, "success")
+        self.assertEqual(calls, ["op", "op"])

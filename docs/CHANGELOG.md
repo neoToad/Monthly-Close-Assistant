@@ -191,6 +191,45 @@ Full suite: **55 tests pass**.
 **Deviations:** None. The live QuickBooks sandbox pull remains un-exercised; this
 step only changed configuration and unit-tested the environment switching logic.
 
+---
+
+## Step 5 — `feat(core): step 5 — QuickBooks sync retry, refresh, and clear logging`
+
+Added robust error handling around the QuickBooks sync pipeline.
+
+- **`refresh_and_store_tokens()`** in `core/quickbooks/client.py` builds a fresh
+  `AuthClient` seeded with the stored refresh token, calls `refresh()`, and writes
+  the new tokens back to `QBToken` via `store_tokens`.
+- **`call_with_retry()`** wraps every QuickBooks API call:
+  - Proactively refreshes the access token before the first attempt if it is expired
+    or inside `QB_TOKEN_REFRESH_BUFFER_MINUTES`.
+  - Catches `AuthorizationException` mid-sync, refreshes the token once, and retries.
+  - Catches transient errors (`QuickbooksException`, `ConnectionError`, `TimeoutError`)
+    and retries up to 3 times with exponential backoff (2s, 4s, 8s).
+  - Logs every retry path and final failure clearly.
+- **`pull_raw_records()`** now routes each object query through `call_with_retry`,
+  passing the stored `QBToken` through.
+- **`sync_transactions()`** catches final pull failures, returns an error summary
+  (`errors=1`, `error_message`), and logs the exception instead of crashing silently.
+- **`sync_quickbooks` command** surfaces any `error_message` as a `CommandError`.
+
+**TDD:** added 5 new tests in `core/tests/test_quickbooks.py` for proactive refresh,
+auth-error refresh+retry, auth-error-after-refresh failure, transient-error
+exponential backoff, and transient-error success-on-retry. Confirmed failures for
+missing helpers, then implemented to green. Full suite: **60 tests pass**.
+
+**Improvements beyond the spec:**
+- Wrapped the *entire* data-pull path in retry logic, not just the top-level sync
+  command, so every `Purchase.all()` / `Deposit.all()` / `JournalEntry.all()` call
+  is resilient.
+- `sync_transactions()` returns an error result rather than crashing the command,
+  keeping the management command in control of the final user-facing message.
+- Used `time.sleep` directly in `call_with_retry` (patched to no-op in tests) so the
+  backoff behavior is real in production but fast in the test suite.
+
+**Deviations:** None. The live QuickBooks sandbox pull remains un-exercised; all
+retry/refresh behavior is unit-tested with mocked exceptions.
+
 **Deviations:**
 - **Live sandbox pull NOT exercised** (no sandbox credentials available). The OAuth
   flow and sync pipeline are fully implemented and unit-tested against mocked
