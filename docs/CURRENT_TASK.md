@@ -1,43 +1,28 @@
-# Current Task
+# CURRENT_TASK
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 13 complete; starting Prompt 14.
 
-The foundation stage (Prompts 1–3) is complete and committed on
-`feature/close-assistant-build`.
+Build (Prompts 4–18) — IN PROGRESS. Prompt 14 complete; starting Prompt 15.
 
-## What is actively happening
-Step 14 — Dashboard Access Control.
+## Current task
 
-- Require login on `/dashboard/` and all flag / close-summary action views.
-- Use Django's built-in auth (`@login_required`).
-- Write tests first (TDD), implement, then commit.
+Step 15 — Dockerize. Wrap the Django app, Postgres, and Redis in Docker Compose for
+local development and consistent CI. Add a `Dockerfile`, `docker-compose.yml`, and any
+supporting entrypoint scripts. Keep the test suite green inside the container context.
 
-## Status
-- [x] Prompt 1 — scaffold.
-- [x] Prompt 2 — models/migrations/admin.
-- [x] Prompt 3 — QuickBooks OAuth + sync.
-- [x] Prompt 4 — QuickBooks secrets & environment config.
-- [x] Prompt 5 — Error handling & edge cases (QuickBooks sync).
-- [x] Prompt 6 — Fake bank feed generator.
-- [x] Prompt 7 — Reconciliation logic.
-- [x] Prompt 8 — Anomaly detection.
-- [x] Prompt 9 — Idempotency for reconciliation & sync.
-- [x] Prompt 10 — Agent layer / close-summary generation.
-- [x] Prompt 11 — Demo data seeding.
-- [x] Prompt 12 — Celery scheduled sync.
-- [x] Prompt 13 — HTMX review dashboard.
-- [ ] Prompt 14 — Dashboard access control.
-- [ ] Prompts 15–18 — queued.
+## Completion criteria
 
-## Decision / blocker notes
-- Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
-  tests only.
-- Live Anthropic summary generation was **not** exercised in Prompt 10; tests use
-  the deterministic fallback and a fake LLM client.
-- Docker test context from `AGENTS.md` applies once Docker is added in Prompt 15;
-  Prompts 4–14 continue to use local Postgres.
-- See `docs/TODO.md` for open follow-ups.
+- `Dockerfile` builds a production-ready Django image.
+- `docker-compose.yml` brings up:
+  - web app container (depends on db/redis)
+  - Postgres container (persistent volume)
+  - Redis container (for Celery broker/result backend)
+- App container runs migrations, collectstatic, and a development server (or gunicorn).
+- `python manage.py test` passes inside the container or against the composed stack.
+- `.env.example` updated with any new variables (e.g., `REDIS_URL`).
+- `docs/CURRENT_TASK.md` overwritten for Prompt 16, `docs/CHANGELOG.md` appended,
+  `docs/TODO.md` updated, and changes committed with the Prompt 15 commit message.
 
-## Next step
-Implement Prompt 14 test-first, keep tests green, commit, then move to Prompt 15.
+## Branch
+
+`feature/close-assistant-build`

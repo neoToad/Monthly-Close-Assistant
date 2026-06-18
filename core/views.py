@@ -14,6 +14,7 @@ from __future__ import annotations
 import calendar
 import datetime as dt
 
+from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -78,6 +79,7 @@ def _available_months() -> list[str]:
     return [f"{d.year}-{d.month:02d}" for d in dates]
 
 
+@login_required
 @require_http_methods(["GET"])
 def dashboard(request):
     """Render the monthly close review dashboard for a selected month."""
@@ -115,6 +117,7 @@ def dashboard(request):
     return render(request, template, context)
 
 
+@login_required
 @require_POST
 def flag_approve(request, flag_id: int):
     """Approve a flag and return its updated table row partial."""
@@ -124,6 +127,7 @@ def flag_approve(request, flag_id: int):
     return render(request, "core/flag_row.html", {"flag": flag})
 
 
+@login_required
 @require_POST
 def flag_reject(request, flag_id: int):
     """Reject a flag and return its updated table row partial."""
@@ -133,6 +137,7 @@ def flag_reject(request, flag_id: int):
     return render(request, "core/flag_row.html", {"flag": flag})
 
 
+@login_required
 @require_POST
 def summary_review(request, month: str):
     """Mark a month's close summary as reviewed with optional notes."""

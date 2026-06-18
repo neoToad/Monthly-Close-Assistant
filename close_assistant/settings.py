@@ -148,6 +148,13 @@ QB_TOKEN_REFRESH_BUFFER_MINUTES = config("QB_TOKEN_REFRESH_BUFFER_MINUTES", defa
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# ---------------------------------------------------------------------------
+# Authentication redirects (Prompt 14)
+# ---------------------------------------------------------------------------
+
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/dashboard/"
+
 
 # ---------------------------------------------------------------------------
 # Celery + Redis task queue (Prompt 12)

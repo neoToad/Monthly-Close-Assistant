@@ -549,3 +549,34 @@ green. Full suite: **98 tests pass**.
 **Deviations:** None. Access control (login required) is intentionally deferred to
 Prompt 14 per the spec.
 
+---
+
+## Step 14 — `feat(core): step 14 — dashboard access control with @login_required`
+
+Required authentication for the review dashboard and all dashboard action views using
+Django's built-in auth.
+
+- **`core/views.py`**: added `django.contrib.auth.decorators.login_required` and
+  applied it to `dashboard`, `flag_approve`, `flag_reject`, and `summary_review`.
+- **`close_assistant/settings.py`**: added `LOGIN_URL = "/accounts/login/"` and
+  `LOGIN_REDIRECT_URL = "/dashboard/"`.
+- **`close_assistant/urls.py`**: included `django.contrib.auth.urls` at
+  `/accounts/` so the built-in login/logout views are available.
+- **`core/templates/registration/login.html`**: simple login form extending
+  `base.html`.
+
+**TDD:** extended `core/tests/test_dashboard.py` with 4 access-control tests first:
+anonymous users are redirected to `/accounts/login/` for the dashboard, flag
+approve/reject, and summary review; logged-in users can access the dashboard.
+Confirmed failures (302 vs 200/405 for anonymous requests), then implemented to green.
+Full suite: **102 tests pass**.
+
+**Improvements beyond the spec:**
+- Login redirect points back to the dashboard via `next`, so users land where they
+  started after authenticating.
+- `login_required` is placed inside `@require_http_methods` / `@require_POST` so
+  anonymous POSTs redirect to login instead of returning a 405.
+
+**Deviations:** None. Logout and password-change views come for free via
+`django.contrib.auth.urls`, but the dashboard only needs login.
+

@@ -20,7 +20,60 @@ from core.models import (
 )
 
 
+class DashboardAccessControlTests(TestCase):
+    def test_dashboard_redirects_anonymous_to_login(self) -> None:
+        resp = self.client.get(reverse("core:dashboard"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accounts/login/", resp.url)
+
+    def test_flag_actions_redirect_anonymous_to_login(self) -> None:
+        txn = Transaction.objects.create(
+            date=dt.date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("100.00"),
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+        )
+        flag = Flag.objects.create(
+            flag_type="reconciliation",
+            transaction=txn,
+            reason="Amount mismatch",
+            severity="high",
+        )
+        for url_name in ("core:flag_approve", "core:flag_reject"):
+            resp = self.client.post(reverse(url_name, args=[flag.id]))
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/accounts/login/", resp.url)
+
+    def test_summary_review_redirects_anonymous_to_login(self) -> None:
+        summary = CloseSummary.objects.create(
+            month="2025-01",
+            summary_text="Draft summary.",
+            status=CloseSummaryStatus.DRAFT,
+        )
+        resp = self.client.post(
+            reverse("core:summary_review", args=[summary.month]),
+            {"reviewer_notes": "Looks good."},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accounts/login/", resp.url)
+
+    def test_logged_in_user_can_access_dashboard(self) -> None:
+        from django.contrib.auth.models import User
+
+        user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+        resp = self.client.get(reverse("core:dashboard"))
+        self.assertEqual(resp.status_code, 200)
+
+
 class DashboardViewTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+
     def test_dashboard_renders_flags_and_summary(self) -> None:
         txn = Transaction.objects.create(
             date=dt.date(2025, 1, 15),
