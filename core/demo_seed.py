@@ -151,7 +151,7 @@ def seed_demo_data(
     Transaction.objects.bulk_create(txns)
     created_txns = len(txns)
 
-    feed = generate_bank_feed(month, force=True)
+    feed = generate_bank_feed(month, force=True, seed=seed)
     rec = run_reconciliation(month)
     summary = draft_close_summary(month)
 

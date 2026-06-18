@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from celery.schedules import crontab
 from decouple import Csv, config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -146,3 +147,24 @@ QB_TOKEN_REFRESH_BUFFER_MINUTES = config("QB_TOKEN_REFRESH_BUFFER_MINUTES", defa
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# ---------------------------------------------------------------------------
+# Celery + Redis task queue (Prompt 12)
+# ---------------------------------------------------------------------------
+
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = config(
+    "CELERY_RESULT_BACKEND", default="redis://localhost:6379/0"
+)
+
+# Run tasks synchronously when this is True (useful for tests / CI).
+CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=False, cast=bool)
+
+# Nightly scheduled tasks.
+CELERY_BEAT_SCHEDULE = {
+    "sync-quickbooks-nightly": {
+        "task": "core.tasks.sync_quickbooks_task",
+        "schedule": crontab(hour=0, minute=0),
+    },
+}

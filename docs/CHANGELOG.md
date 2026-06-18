@@ -471,3 +471,43 @@ to a deterministic seed. Full suite: **90 tests pass**.
 
 **Deviations:** None. Live QuickBooks and Anthropic integrations are still not
 exercised; the demo command uses the local fake feed and deterministic summary.
+
+---
+
+## Step 12 — `feat(core): step 12 — Celery + Redis scheduled QuickBooks sync`
+
+Installed Celery and Redis, wired Celery into Django, and added a nightly scheduled
+task that runs the QuickBooks sync.
+
+- **New `close_assistant/celery.py`** and updated `close_assistant/__init__.py` to
+  load the Celery app alongside Django.
+- **`close_assistant/settings.py`** now configures:
+  - `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` (defaulting to
+    `redis://localhost:6379/0`).
+  - `CELERY_TASK_ALWAYS_EAGER` toggle for tests / CI.
+  - `CELERY_BEAT_SCHEDULE` with a nightly `sync-quickbooks-nightly` crontab at
+    midnight.
+- **New `core/tasks.py`** with `sync_quickbooks_task`, a thin `@shared_task` wrapper
+  around `call_command("sync_quickbooks")`.
+- Added **Celery 5.6.3** and **redis 8.0.0** to `requirements.txt`.
+- Added `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, and `CELERY_TASK_ALWAYS_EAGER`
+  to `.env.example`.
+- Also fixed `core/demo_seed.py` to pass the same deterministic seed into
+  `generate_bank_feed`, ensuring `seed_demo_data` re-runs produce identical demo
+  data and flags.
+
+**TDD:** created `core/tests/test_celery.py` with 3 tests first: Celery app loads
+broker URL from Django settings, beat schedule contains the nightly sync task, and
+the task calls `sync_quickbooks`. Confirmed failures (`ModuleNotFoundError` for
+`close_assistant.celery` and `core.tasks`), then implemented to green. Full suite:
+**93 tests pass**.
+
+**Improvements beyond the spec:**
+- The task is a thin wrapper around the existing management command, avoiding
+  duplicated sync logic.
+- `CELERY_TASK_ALWAYS_EAGER` is configurable from the environment, making it easy to
+  run the test suite without a live Redis broker.
+- Broker/result-backend URLs are fully environment-driven.
+
+**Deviations:** None. The nightly beat schedule is configured; live Redis and a
+running worker are not required for the test suite.

@@ -1,17 +1,18 @@
 # Current Task
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 11 complete; starting Prompt 12.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 12 complete; starting Prompt 13.
 
 The foundation stage (Prompts 1–3) is complete and committed on
 `feature/close-assistant-build`.
 
 ## What is actively happening
-Step 12 — Celery Scheduled Sync.
+Step 13 — HTMX Review Dashboard.
 
-- Install Celery and Redis.
-- Configure Celery with Django.
-- Add a nightly scheduled task that runs `sync_quickbooks`.
+- Build `/dashboard/` with a month selector (`hx-get`).
+- Show a table of open flags with Approve/Reject buttons (`hx-post` partial row swap).
+- Show a CloseSummary draft section with a Mark Reviewed action and reviewer notes
+  field.
 - Write tests first (TDD), implement, then commit.
 
 ## Status
@@ -26,8 +27,9 @@ Step 12 — Celery Scheduled Sync.
 - [x] Prompt 9 — Idempotency for reconciliation & sync.
 - [x] Prompt 10 — Agent layer / close-summary generation.
 - [x] Prompt 11 — Demo data seeding.
-- [ ] Prompt 12 — Celery scheduled sync.
-- [ ] Prompts 13–18 — queued.
+- [x] Prompt 12 — Celery scheduled sync.
+- [ ] Prompt 13 — HTMX review dashboard.
+- [ ] Prompts 14–18 — queued.
 
 ## Decision / blocker notes
 - Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
@@ -39,4 +41,4 @@ Step 12 — Celery Scheduled Sync.
 - See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-Implement Prompt 12 test-first, keep tests green, commit, then move to Prompt 13.
+Implement Prompt 13 test-first, keep tests green, commit, then move to Prompt 14.

@@ -3,12 +3,11 @@
 Items deferred to later stages (per the prompt sequence). Moved here from the running
 plan so the current step stays uncluttered.
 
-## Current — Prompt 12
-- Celery scheduled sync.
-- Redis broker setup.
+## Current — Prompt 13
+- HTMX review dashboard (`/dashboard/`).
+- Month selector, flags table, approve/reject actions, close-summary section.
 
 ## Upcoming
-- Prompt 13 — HTMX review dashboard.
 - Prompt 14 — Dashboard access control.
 - Prompt 15 — Dockerize.
 - Prompt 16 — CI/CD.
