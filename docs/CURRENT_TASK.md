@@ -1,18 +1,20 @@
 # Current Task
 
 ## Stage
-**Build (Prompts 4–18) — IN PROGRESS.** Prompt 8 complete; starting Prompt 9.
+**Build (Prompts 4–18) — IN PROGRESS.** Prompt 9 complete; starting Prompt 10.
 
 The foundation stage (Prompts 1–3) is complete and committed on
 `feature/close-assistant-build`.
 
 ## What is actively happening
-Step 9 — Idempotency for Reconciliation & Sync.
+Step 10 — Agent Layer.
 
-- Ensure re-running `run_reconciliation` does not duplicate `Flag` records.
-- Keep `sync_quickbooks` idempotent via `qb_transaction_id`.
-- Make `generate_bank_feed` prompt or require `--force` if bank data already exists
-  for the month.
+- Install and configure an agent framework (CrewAI, or LangGraph +
+  LangChain-Anthropic).
+- Build a step that reads open `Flag` records plus monthly category totals /
+  prior-month comparison, then drafts a plain-language close summary.
+- Save the result as a `CloseSummary` with `status="draft"`.
+- Wire it into a `generate_close_summary` management command.
 - Write tests first (TDD), implement, then commit.
 
 ## Status
@@ -24,8 +26,9 @@ Step 9 — Idempotency for Reconciliation & Sync.
 - [x] Prompt 6 — Fake bank feed generator.
 - [x] Prompt 7 — Reconciliation logic.
 - [x] Prompt 8 — Anomaly detection.
-- [ ] Prompt 9 — Idempotency for reconciliation & sync.
-- [ ] Prompts 10–18 — queued.
+- [x] Prompt 9 — Idempotency for reconciliation & sync.
+- [ ] Prompt 10 — Agent layer / close-summary generation.
+- [ ] Prompts 11–18 — queued.
 
 ## Decision / blocker notes
 - Live sandbox pull was **not** exercised in Prompt 3 (no credentials); mocked
@@ -35,4 +38,4 @@ Step 9 — Idempotency for Reconciliation & Sync.
 - See `docs/TODO.md` for open follow-ups.
 
 ## Next step
-Implement Prompt 9 test-first, keep tests green, commit, then move to Prompt 10.
+Implement Prompt 10 test-first, keep tests green, commit, then move to Prompt 11.

@@ -3,11 +3,11 @@
 Items deferred to later stages (per the prompt sequence). Moved here from the running
 plan so the current step stays uncluttered.
 
-## Current — Prompt 9
-- Idempotency for reconciliation, sync, and bank-feed generation.
+## Current — Prompt 10
+- Agent layer / close-summary generation.
+- `generate_close_summary` management command.
 
 ## Upcoming
-- Prompt 10 — Agent layer / close-summary generation.
 - Prompt 11 — Demo data seeding (`seed_demo_data`).
 - Prompt 12 — Celery scheduled sync.
 - Prompt 13 — HTMX review dashboard.

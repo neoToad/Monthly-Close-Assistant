@@ -342,3 +342,48 @@ implemented to green. Full suite: **77 tests pass**.
 
 **Deviations:** None. Live QuickBooks data was not used; all anomaly checks are
 exercised against generated `Transaction` records.
+
+---
+
+## Step 9 — `feat(core): step 9 — idempotency for reconciliation, sync, and bank feed`
+
+Made the data pipeline idempotent so repeated runs do not duplicate records.
+
+- **`run_reconciliation`** now deletes existing reconciliation ``Flag`` records
+  for the target month (by linked ``Transaction`` or ``BankTransaction`` date)
+  before creating the newly computed set, inside the same atomic transaction.
+- **`run_anomaly_detection`** now deletes existing anomaly ``Flag`` records whose
+  linked ``Transaction`` falls in the target month before inserting the new set,
+  also inside an atomic transaction.
+- **Category month-over-month anomaly flags** now attach to a representative
+  ``Transaction`` for the category so they can be scoped to a month and removed
+  on re-run.
+- **`sync_quickbooks`** idempotency is already enforced by
+  ``Transaction.objects.get_or_create(qb_transaction_id=...)``; added a command-level
+  test confirming a second run produces no duplicates.
+- **`generate_bank_feed`** already required ``--force`` when bank data exists for
+  the month; this behavior is covered by existing tests.
+
+**TDD:** added 3 idempotency tests first:
+- `test_reconciliation_is_idempotent` in `RunReconciliationCommandTests`
+  (failed: second run doubled reconciliation flags).
+- `test_anomaly_detection_is_idempotent` in `AnomalyDetectionCommandTests`
+  (failed: second run doubled anomaly flags).
+- `test_command_is_idempotent` in `SyncCommandTests`
+  (passed because `get_or_create` was already in place, but added for regression
+  coverage).
+
+Confirmed failures, implemented month-scoped deletion, then verified all 80 tests
+pass (`python manage.py test`).
+
+**Improvements beyond the spec:**
+- Scoped deletion uses the related ``Transaction`` / ``BankTransaction`` date so
+  flags for other months are never touched.
+- Category-level anomaly flags were previously detached from any transaction;
+  tying them to a representative transaction keeps deletion precise and gives
+  reviewers a clickable starting point.
+- Deletion and insertion happen in the same `transaction.atomic()` block, so a
+  re-run is all-or-nothing.
+
+**Deviations:** None.
+

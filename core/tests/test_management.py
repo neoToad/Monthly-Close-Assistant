@@ -147,6 +147,21 @@ class RunReconciliationCommandTests(TestCase):
         self.assertEqual(flags.count(), 1)
         self.assertIn("gl", flags.first().reason.lower())
 
+    def test_reconciliation_is_idempotent(self) -> None:
+        """Re-running run_reconciliation must not duplicate reconciliation flags."""
+        txn = _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
+        BankTransaction.objects.create(
+            date=txn.date, vendor=txn.vendor, amount=Decimal("102.50"),
+            qb_transaction_id=txn.qb_transaction_id,
+        )
+        call_command("run_reconciliation", "2025-01")
+        first_count = Flag.objects.filter(flag_type=FlagType.RECONCILIATION).count()
+        self.assertGreater(first_count, 0)
+
+        call_command("run_reconciliation", "2025-01")
+        second_count = Flag.objects.filter(flag_type=FlagType.RECONCILIATION).count()
+        self.assertEqual(second_count, first_count)
+
 
 class AnomalyDetectionCommandTests(TestCase):
     def test_no_data_exits_cleanly(self) -> None:
@@ -228,3 +243,15 @@ class AnomalyDetectionCommandTests(TestCase):
             if "standard deviation" in f.reason.lower()
         ]
         self.assertEqual(len(z_flags), 0)
+
+    def test_anomaly_detection_is_idempotent(self) -> None:
+        """Re-running anomaly detection must not duplicate anomaly flags."""
+        _make_txn(qb_transaction_id="QB-dup-1", amount=Decimal("75.00"), date=dt.date(2025, 1, 5))
+        _make_txn(qb_transaction_id="QB-dup-2", amount=Decimal("75.00"), date=dt.date(2025, 1, 7))
+        call_command("run_reconciliation", "2025-01")
+        first_count = Flag.objects.filter(flag_type=FlagType.ANOMALY).count()
+        self.assertGreater(first_count, 0)
+
+        call_command("run_reconciliation", "2025-01")
+        second_count = Flag.objects.filter(flag_type=FlagType.ANOMALY).count()
+        self.assertEqual(second_count, first_count)

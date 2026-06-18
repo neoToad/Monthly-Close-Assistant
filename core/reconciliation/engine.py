@@ -15,6 +15,7 @@ from typing import Optional
 
 import pandas as pd
 from django.db import transaction
+from django.db.models import Q
 
 from core.models import BankTransaction, Flag, FlagType, Severity, Transaction
 
@@ -191,7 +192,14 @@ def run_reconciliation(month: str) -> dict:
             )
         )
 
+    first, last = _month_bounds(month)
     with transaction.atomic():
+        Flag.objects.filter(
+            flag_type=FlagType.RECONCILIATION
+        ).filter(
+            Q(transaction__date__range=(first, last))
+            | Q(bank_transaction__date__range=(first, last))
+        ).delete()
         Flag.objects.bulk_create(flags_to_create)
 
     logger.info(

@@ -113,6 +113,25 @@ class SyncCommandTests(TestCase):
         from core.models import Transaction
         self.assertEqual(Transaction.objects.count(), 1)
 
+    def test_command_is_idempotent(self) -> None:
+        """Running sync_quickbooks twice with the same records must not duplicate."""
+        from core.models import Transaction
+
+        token = mock.MagicMock(realm_id="123145")
+        raw = {
+            "Purchase": [SimpleNamespace_purchase()],
+            "Deposit": [],
+            "JournalEntry": [],
+        }
+        with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+            mock_build.return_value = mock.MagicMock()
+            call_command("sync_quickbooks", stdout=StringIO())
+            self.assertEqual(Transaction.objects.count(), 1)
+            call_command("sync_quickbooks", stdout=StringIO())
+            self.assertEqual(Transaction.objects.count(), 1)
+
 
 def SimpleNamespace_purchase() -> object:
     from types import SimpleNamespace

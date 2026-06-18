@@ -231,6 +231,10 @@ def _category_mom_anomalies(df: pd.DataFrame, month: str) -> list[Flag]:
         if cat_lower not in prev_totals.index:
             continue
 
+        # Tie category-level flags to a representative transaction so they can be
+        # scoped to a month for idempotent re-runs.
+        rep_id = int(df[df["category_lower"] == cat_lower].iloc[0]["id"])
+
         prev_total = prev_totals[cat_lower]
         # Avoid division by zero; flag any spend in a previously-zero category.
         if prev_total == 0:
@@ -238,6 +242,7 @@ def _category_mom_anomalies(df: pd.DataFrame, month: str) -> list[Flag]:
                 flags.append(
                     Flag(
                         flag_type=FlagType.ANOMALY,
+                        transaction_id=rep_id,
                         reason=(
                             f"Category {cat_lower.title()} spend jumped from $0.00 "
                             f"to ${current_total} month-over-month."
@@ -252,6 +257,7 @@ def _category_mom_anomalies(df: pd.DataFrame, month: str) -> list[Flag]:
             flags.append(
                 Flag(
                     flag_type=FlagType.ANOMALY,
+                    transaction_id=rep_id,
                     reason=(
                         f"Category {cat_lower.title()} spend increased "
                         f"{change_ratio:.0%} month-over-month "
@@ -264,6 +270,7 @@ def _category_mom_anomalies(df: pd.DataFrame, month: str) -> list[Flag]:
             flags.append(
                 Flag(
                     flag_type=FlagType.ANOMALY,
+                    transaction_id=rep_id,
                     reason=(
                         f"Category {cat_lower.title()} spend decreased "
                         f"{1 / change_ratio:.0%} month-over-month "
@@ -296,7 +303,14 @@ def run_anomaly_detection(month: str) -> dict:
     flags.extend(_new_vendor_anomalies(df, month))
     flags.extend(_category_mom_anomalies(df, month))
 
+    first, last = _month_bounds(month)
     with transaction.atomic():
+        Flag.objects.filter(
+            flag_type=FlagType.ANOMALY,
+            transaction_id__in=Transaction.objects.filter(
+                date__range=(first, last)
+            ).values("id"),
+        ).delete()
         Flag.objects.bulk_create(flags)
 
     logger.info(
