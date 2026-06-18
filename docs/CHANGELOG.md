@@ -857,3 +857,26 @@ green.
 **Deviations:** None.
 
 ---
+
+## D5 — `feat(ui): D5 — empty and loading states`
+
+Added the missing non-ideal states:
+
+- Replaced the generic "No open flags" message with a calm empty-state message:
+  "No items flagged for [Month]. Everything reconciled cleanly."
+- Added an `.empty-state` class styled with `--font-body`, `--text-base`, and
+  `--color-slate`.
+- Added a subtle HTMX loading state via `.htmx-request { opacity: 0.5; }` with a
+  short transition, applied to the month selector, action buttons, and the
+  dashboard content container during swaps.
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+empty-state copy and the `.htmx-request` CSS rule, then implemented to green.
+
+**Improvements beyond the spec:**
+- Used a single, global `.htmx-request` rule so any HTMX-driven element fades
+  consistently rather than adding per-element spinners.
+
+**Deviations:** None.
+
+---

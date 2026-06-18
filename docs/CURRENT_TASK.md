@@ -6,11 +6,11 @@ Design System (Prompts D1–D7).
 
 ## Current task
 
-**D5 — Empty & Loading States**
+**D6 — Responsive & Accessibility Pass**
 
-Add an empty-state message for months with no flags, and a subtle opacity
-loading state for HTMX-driven month switching and approve/reject actions. Add
-failing tests first.
+Make the flagged-items ledger stack on mobile below 640px, add visible keyboard
+focus outlines, and verify WCAG AA contrast for the token colors. Add failing
+tests first.
 
 ## Branch
 
@@ -18,4 +18,4 @@ failing tests first.
 
 ## Next step
 
-D6 — Responsive & Accessibility Pass (after D5 is committed and pushed).
+D7 — Self-Critique Pass (after D6 is committed and pushed).

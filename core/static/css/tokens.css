@@ -348,6 +348,20 @@ main {
     margin-top: var(--space-4);
 }
 
+/* Empty state */
+.empty-state {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    color: var(--color-slate);
+    padding: var(--space-6) 0;
+}
+
+/* HTMX loading state: subtle opacity fade rather than a spinner. */
+.htmx-request {
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
 /* Flat, hairline aesthetic: avoid shadows and heavy radius in base styles. */
 * {
     box-shadow: none;

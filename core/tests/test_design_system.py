@@ -247,3 +247,26 @@ class CloseSummaryTests(TestCase):
         self.assertIn("Looks good.", content)
         self.assertNotIn("Mark Reviewed", content)
         self.assertNotIn('class="notes-field"', content)
+
+
+class EmptyAndLoadingStateTests(TestCase):
+    """D5 — Empty and loading states."""
+
+    def setUp(self) -> None:
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+
+    def test_empty_month_shows_empty_state_message(self) -> None:
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode("utf-8")
+        self.assertIn("empty-state", content)
+        self.assertIn("No items flagged for 2025-01", content)
+        self.assertIn("Everything reconciled cleanly", content)
+
+    def test_tokens_css_has_htmx_request_loading_state(self) -> None:
+        css = (Path(settings.BASE_DIR) / "core" / "static" / "css" / "tokens.css").read_text(encoding="utf-8")
+        self.assertIn(".htmx-request", css)
+        self.assertIn("opacity: 0.5", css)

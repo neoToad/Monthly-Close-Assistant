@@ -6,6 +6,6 @@
 - [x] D2 — Page Shell & Header
 - [x] D3 — Flagged Items Table Redesign
 - [x] D4 — Draft Summary Section
-- [ ] D5 — Empty & Loading States
+- [x] D5 — Empty & Loading States
 - [ ] D6 — Responsive & Accessibility Pass
 - [ ] D7 — Self-Critique Pass
