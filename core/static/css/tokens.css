@@ -267,6 +267,87 @@ main {
     color: var(--color-rejected);
 }
 
+/* Draft summary section */
+.summary-section {
+    margin-top: var(--space-8);
+}
+
+.eyebrow {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-slate);
+    margin: 0 0 var(--space-2);
+}
+
+.summary-month {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-slate);
+    margin-bottom: var(--space-4);
+}
+
+.summary-status {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-confirmed);
+    margin-bottom: var(--space-4);
+}
+
+.summary-text {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    color: var(--color-ink);
+    max-width: 70ch;
+    white-space: pre-wrap;
+}
+
+.summary-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-6);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-hairline);
+}
+
+.summary-footer form {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    width: 100%;
+}
+
+.notes-field {
+    flex: 1;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-ink);
+    border: 1px solid var(--color-hairline);
+    border-radius: 4px;
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    resize: vertical;
+}
+
+.notes-field:focus {
+    outline: none;
+    border-color: var(--color-slate);
+}
+
+.notes-field::placeholder {
+    color: var(--color-slate);
+}
+
+.reviewer-notes {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-slate);
+    margin-top: var(--space-4);
+}
+
 /* Flat, hairline aesthetic: avoid shadows and heavy radius in base styles. */
 * {
     box-shadow: none;

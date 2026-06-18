@@ -831,3 +831,29 @@ implemented to green.
 **Deviations:** None.
 
 ---
+
+## D4 — `feat(ui): D4 — document-like draft summary section`
+
+Restyled the close summary block:
+
+- Replaced the generic `<pre>` + status paragraph with a structured summary section:
+  uppercase `DRAFT SUMMARY` eyebrow, month label, readable `summary-text` block
+  with `line-height: 1.6` and `max-width: 70ch`, and a hairline-divided footer.
+- Styled "Mark Reviewed" as a plain-text button (`.text-btn.approve`) next to an
+  understated `.notes-field` textarea.
+- Added a `.summary-status` line for reviewed summaries so the resolved state is
+  visible.
+- Added all summary CSS to `tokens.css` (eyebrow, month/status labels, text
+  measure, footer, notes field).
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+eyebrow, readable text, footer, and reviewed-state rendering, then implemented to
+green.
+
+**Improvements beyond the spec:**
+- Kept the reviewed summary's reviewer notes readable while also surfacing the
+  `Reviewed` status explicitly.
+
+**Deviations:** None.
+
+---

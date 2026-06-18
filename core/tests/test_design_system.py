@@ -13,6 +13,8 @@ from pathlib import Path
 from django.conf import settings
 from django.test import TestCase
 
+from core.models import CloseSummary
+
 
 class DesignTokenTests(TestCase):
     """D1 — Design tokens and base styles."""
@@ -195,3 +197,53 @@ class LedgerRowTests(TestCase):
         self.assertIn('class="dot rejected"', content)
         self.assertNotIn('class="text-btn approve"', content)
         self.assertNotIn('class="text-btn reject"', content)
+
+
+class CloseSummaryTests(TestCase):
+    """D4 — Draft summary section redesign."""
+
+    def setUp(self) -> None:
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+        self.client.login(username="reviewer", password="pass")
+
+    def _create_summary(self, status: str = "draft") -> CloseSummary:
+        from core.models import CloseSummary, CloseSummaryStatus
+
+        return CloseSummary.objects.create(
+            month="2025-01",
+            summary_text="This month shows a $2.00 discrepancy likely due to timing.",
+            status=getattr(CloseSummaryStatus, status.upper()),
+        )
+
+    def test_summary_section_has_eyebrow_month_and_readable_text(self) -> None:
+        self._create_summary()
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        content = resp.content.decode("utf-8")
+        self.assertIn("DRAFT SUMMARY", content)
+        self.assertIn('class="eyebrow"', content)
+        self.assertIn('class="summary-month"', content)
+        self.assertIn("2025-01", content)
+        self.assertIn('class="summary-text"', content)
+
+    def test_summary_section_has_plain_text_mark_reviewed_and_notes_field(self) -> None:
+        self._create_summary()
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        content = resp.content.decode("utf-8")
+        self.assertIn('class="summary-footer"', content)
+        self.assertIn('class="text-btn approve"', content)
+        self.assertIn("Mark Reviewed", content)
+        self.assertIn('class="notes-field"', content)
+        self.assertIn("reviewer_notes", content)
+
+    def test_reviewed_summary_hides_form_and_shows_notes(self) -> None:
+        summary = self._create_summary("reviewed")
+        summary.reviewer_notes = "Looks good."
+        summary.save()
+
+        resp = self.client.get("/dashboard/", {"month": "2025-01"})
+        content = resp.content.decode("utf-8")
+        self.assertIn("Looks good.", content)
+        self.assertNotIn("Mark Reviewed", content)
+        self.assertNotIn('class="notes-field"', content)

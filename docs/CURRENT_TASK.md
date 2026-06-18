@@ -6,13 +6,11 @@ Design System (Prompts D1–D7).
 
 ## Current task
 
-**D4 — Draft Summary Section**
+**D5 — Empty & Loading States**
 
-Restyle the close-summary block in `core/templates/core/close_summary_section.html`
-to look document-like: a small uppercase eyebrow label, a month label, readable
-summary text with generous line-height and a max content width, a hairline divider,
-and a plain-text "Mark Reviewed" action beside an understated reviewer-notes
-textarea. Add failing tests first.
+Add an empty-state message for months with no flags, and a subtle opacity
+loading state for HTMX-driven month switching and approve/reject actions. Add
+failing tests first.
 
 ## Branch
 
@@ -20,4 +18,4 @@ textarea. Add failing tests first.
 
 ## Next step
 
-D5 — Empty & Loading States (after D4 is committed and pushed).
+D6 — Responsive & Accessibility Pass (after D5 is committed and pushed).

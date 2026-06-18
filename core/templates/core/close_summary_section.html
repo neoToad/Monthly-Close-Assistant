@@ -1,20 +1,30 @@
-<h3>Close Summary</h3>
-{% if summary %}
-    <p class="muted">Status: {{ summary.get_status_display }}</p>
-    <pre>{{ summary.summary_text }}</pre>
-    {% if summary.status == "draft" %}
-        <form hx-post="{% url 'core:summary_review' summary.month %}"
-              hx-target="#summary-section"
-              hx-swap="outerHTML">
-            <label for="reviewer-notes">Reviewer notes</label><br>
-            <textarea id="reviewer-notes" name="reviewer_notes" rows="3" cols="60"></textarea><br>
-            <button type="submit" class="primary">Mark Reviewed</button>
-        </form>
-    {% else %}
-        {% if summary.reviewer_notes %}
-            <p><strong>Reviewer notes:</strong> {{ summary.reviewer_notes }}</p>
+<div class="summary-section">
+    {% if summary %}
+        <div class="eyebrow">DRAFT SUMMARY</div>
+        <div class="summary-month">{{ summary.month }}</div>
+        {% if summary.status != "draft" %}
+            <div class="summary-status">{{ summary.get_status_display }}</div>
         {% endif %}
+        <div class="summary-text">{{ summary.summary_text }}</div>
+
+        {% if summary.status == "draft" %}
+            <div class="summary-footer">
+                <form hx-post="{% url 'core:summary_review' summary.month %}"
+                      hx-target="#summary-section"
+                      hx-swap="outerHTML">
+                    <button type="submit" class="text-btn approve">Mark Reviewed</button>
+                    <textarea name="reviewer_notes"
+                              class="notes-field"
+                              rows="2"
+                              placeholder="Add a note before marking reviewed…"></textarea>
+                </form>
+            </div>
+        {% else %}
+            {% if summary.reviewer_notes %}
+                <p class="reviewer-notes"><strong>Reviewer notes:</strong> {{ summary.reviewer_notes }}</p>
+            {% endif %}
+        {% endif %}
+    {% else %}
+        <p class="muted">No close summary for {{ month }}.</p>
     {% endif %}
-{% else %}
-    <p class="muted">No close summary for {{ month }}.</p>
-{% endif %}
+</div>
