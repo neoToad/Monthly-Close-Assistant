@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Monthly Close Assistant{% endblock %}
+
+{% block content %}
+    <div class="home-hero">
+        <h1 class="home-title">Monthly Close Assistant</h1>
+        <p class="home-lede">
+            Review reconciled transactions, catch anomalies, and finalize your
+            monthly close summary— all in one place.
+        </p>
+        <div class="home-actions">
+            <a class="home-cta" href="{% url 'login' %}">Log in to review</a>
+        </div>
+    </div>
+
+    <div class="home-strip" aria-label="What the assistant does">
+        <div class="home-strip-item">
+            <span class="dot flag" aria-hidden="true"></span>
+            <span>Flags mismatches and outliers for review</span>
+        </div>
+        <div class="home-strip-item">
+            <span class="dot confirmed" aria-hidden="true"></span>
+            <span>Drafts a close summary in plain language</span>
+        </div>
+        <div class="home-strip-item">
+            <span class="dot rejected" aria-hidden="true"></span>
+            <span>Keeps a record of every approval and rejection</span>
+        </div>
+    </div>
+{% endblock %}

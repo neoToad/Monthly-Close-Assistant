@@ -18,11 +18,20 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from core.models import CloseSummary, CloseSummaryStatus, Flag, FlagStatus, Transaction
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
+
+
+@require_http_methods(["GET"])
+def home(request):
+    """Landing page for anonymous users; redirect authenticated users to the dashboard."""
+    if request.user.is_authenticated:
+        return HttpResponseRedirect(reverse("core:dashboard"))
+    return render(request, "core/home.html")
 
 
 @require_http_methods(["GET"])

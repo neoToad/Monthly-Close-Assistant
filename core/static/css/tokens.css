@@ -390,3 +390,159 @@ main {
 * {
     box-shadow: none;
 }
+
+/* Global site header and navigation */
+.site-header {
+    border-bottom: 1px solid var(--color-hairline);
+    background: var(--color-paper);
+}
+
+.site-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-5);
+    gap: var(--space-4);
+}
+
+.site-brand {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 400;
+    color: var(--color-ink);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+    flex-shrink: 0;
+}
+
+.site-brand:hover {
+    text-decoration: underline;
+}
+
+.site-nav-links {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.site-nav-links a,
+.site-nav-links .nav-logout {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-slate);
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.site-nav-links a:hover,
+.site-nav-links .nav-logout:hover {
+    color: var(--color-ink);
+    text-decoration: underline;
+}
+
+.site-nav-links a:focus-visible,
+.site-nav-links .nav-logout:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+}
+
+.site-nav-links form {
+    display: inline;
+    margin: 0;
+}
+
+/* Homepage hero */
+.home-hero {
+    padding: var(--space-8) 0 var(--space-6);
+    border-bottom: 1px solid var(--color-hairline);
+}
+
+.home-title {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin: 0 0 var(--space-4);
+    color: var(--color-ink);
+}
+
+.home-lede {
+    font-family: var(--font-body);
+    font-size: var(--text-lg);
+    line-height: 1.5;
+    color: var(--color-slate);
+    max-width: 60ch;
+    margin: 0 0 var(--space-6);
+}
+
+.home-actions {
+    display: flex;
+    gap: var(--space-4);
+}
+
+.home-cta {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-paper);
+    background: var(--color-ink);
+    border: 1px solid var(--color-ink);
+    border-radius: 4px;
+    padding: var(--space-2) var(--space-4);
+    text-decoration: none;
+}
+
+.home-cta:hover {
+    background: var(--color-slate);
+    border-color: var(--color-slate);
+}
+
+.home-cta:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+}
+
+.home-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+    padding: var(--space-6) 0;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-slate);
+}
+
+.home-strip-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Responsive: stack nav links below the brand on narrow screens. */
+@media (max-width: 640px) {
+    .site-nav {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+
+    .site-nav-links {
+        justify-content: flex-start;
+    }
+
+    .home-hero {
+        padding-top: var(--space-6);
+    }
+}
