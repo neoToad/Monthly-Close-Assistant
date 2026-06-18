@@ -2,11 +2,11 @@
 
 ## Stage
 
-Remove dummy data and switch to real QuickBooks data workflow.
+Fix QuickBooks sync regression after removing dummy data.
 
 ## Current task
 
-**Complete.** Removed the fake GL demo transaction generator (`seed_demo_data`), kept the synthetic bank feed as a testing-only tool, added dashboard actions for QuickBooks sync / reconciliation / close-summary drafting, updated navigation and docs, and verified the full suite (147 tests pass).
+**Complete.** Fixed `pull_raw_records` in `core/quickbooks/client.py` so the QuickBooks client is passed to `model.all(qb=...)` correctly. Added a regression test in `core/tests/test_quickbooks.py`. Full suite: 148 tests pass.
 
 ## Branch
 
@@ -14,4 +14,4 @@ Remove dummy data and switch to real QuickBooks data workflow.
 
 ## Next step
 
-Commit the changes and push to `feature/close-assistant-build`.
+Commit the fix and push to `feature/close-assistant-build`.

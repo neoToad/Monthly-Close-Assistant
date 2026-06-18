@@ -267,7 +267,7 @@ def pull_raw_records(qb_client: QuickBooks, qb_token: Optional[Any] = None) -> d
     Wraps each object query with ``call_with_retry`` so mid-sync auth expiry and
     transient API errors are handled automatically (Prompt 5).
     """
-    def _fetch(model, client):
+    def _fetch(client, model):
         return model.all(qb=client)
 
     return {

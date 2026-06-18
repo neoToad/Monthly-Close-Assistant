@@ -992,3 +992,27 @@ reconciliation, anomaly, and summary tests continue to pass.
 **Deviations:** None.
 
 ---
+
+## Fix QB sync regression — `fix(core): pull_raw_records argument order`
+
+Fixed a regression in `core/quickbooks/client.py` that caused live QuickBooks sync
+from the dashboard to fail with `'QuickBooks' object has no attribute 'all'`.
+
+- The inner `_fetch` helper inside `pull_raw_records` had its parameters declared as
+  `_fetch(model, client)`, but `call_with_retry` invokes `func(qb_client, *args)`.
+  With `args=(model,)`, the QuickBooks client was being passed as `model` and the
+  model class as `client`, causing `model.all(qb=client)` to call `.all()` on the
+  `QuickBooks` client object.
+- Corrected `_fetch` to `_fetch(client, model)` so `model.all(qb=client)` receives
+  the actual QuickBooks client.
+- Added `PullRawRecordsTests` in `core/tests/test_quickbooks.py` to exercise
+  `pull_raw_records` with a fake model class and assert the correct `qb=` argument
+  is passed.
+- Full suite: **148 tests pass**.
+
+**TDD:** wrote the regression test first; it failed before the `_fetch` signature
+change and passed after.
+
+**Deviations:** None.
+
+---

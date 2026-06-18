@@ -182,6 +182,31 @@ class SyncTransactionsTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# pull_raw_records (regression for argument order)
+# ---------------------------------------------------------------------------
+
+
+class PullRawRecordsTests(SimpleTestCase):
+    def test_fetch_passes_quickbooks_client_as_qb_argument(self) -> None:
+        """Regression: _fetch must call model.all(qb=client), not the reverse."""
+        mock_qb = mock.MagicMock()
+        captured: dict = {}
+
+        class FakeModel:
+            @classmethod
+            def all(cls, qb):
+                captured["qb"] = qb
+                return ["record-1"]
+
+        with mock.patch.object(qb_client, "SYNC_OBJECTS", {"Fake": FakeModel}), \
+             mock.patch("core.quickbooks.client.time.sleep"):
+            result = qb_client.pull_raw_records(mock_qb, qb_token=None)
+
+        self.assertEqual(result, {"Fake": ["record-1"]})
+        self.assertIs(captured["qb"], mock_qb)
+
+
+# ---------------------------------------------------------------------------
 # refresh_tokens
 # ---------------------------------------------------------------------------
 
