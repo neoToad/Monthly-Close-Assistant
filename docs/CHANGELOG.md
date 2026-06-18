@@ -230,6 +230,43 @@ missing helpers, then implemented to green. Full suite: **60 tests pass**.
 **Deviations:** None. The live QuickBooks sandbox pull remains un-exercised; all
 retry/refresh behavior is unit-tested with mocked exceptions.
 
+---
+
+## Step 6 — `feat(core): step 6 — fake bank feed generator with configurable discrepancies`
+
+Built a fake bank feed generator for reconciliation testing.
+
+- **New module `core/bank_feed.py`** with `generate_bank_feed(month, ...)`:
+  - Reads ``Transaction`` records for the requested month.
+  - Uses Pandas to apply configurable discrepancies:
+    * ``drop_rate`` (default 5%)
+    * ``dup_rate`` (default 3%)
+    * ``amount_shift_rate`` (default 4%, deltas -$2.50 to +$3.75)
+    * ``date_shift_rate`` (default 5%, ±1-2 days)
+    * ``extra_rate`` (default 3%, bank-only rows with no GL match)
+  - Returns and logs a discrepancy summary with counts for each category.
+  - Rejects regeneration unless ``force=True``; ``force`` deletes existing bank rows
+    for the month first.
+- **New management command `generate_bank_feed``** with arguments for month and all
+  five rates, plus ``--force`` and an optional ``--seed`` for reproducible testing.
+- Added **Pandas 2.2.3** and **NumPy 2.2.6** to `requirements.txt`.
+
+**TDD:** created `core/tests/test_management.py` with 4 tests first: no-data
+warning, generation + summary output, ``--force`` overwrite behavior, and
+month-isolation. Confirmed failures (`Unknown command: 'generate_bank_feed'`), then
+implemented to green. Full suite: **64 tests pass**.
+
+**Improvements beyond the spec:**
+- Isolated the generator logic in `core/bank_feed.py` so it can be tested and reused
+  outside the management command (e.g., from the upcoming `seed_demo_data` command).
+- Used ``bulk_create`` inside an atomic transaction for efficient insertion.
+- Added ``--seed`` for deterministic discrepancy generation, useful for reconciliation
+  test assertions.
+- Preserved bank data for other months by filtering deletes/lookups on the target
+  month range.
+
+**Deviations:** None.
+
 **Deviations:**
 - **Live sandbox pull NOT exercised** (no sandbox credentials available). The OAuth
   flow and sync pipeline are fully implemented and unit-tested against mocked
