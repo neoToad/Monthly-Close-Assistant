@@ -4,7 +4,7 @@
 Built to address a specific interview gap: lack of accounting automation experience for the AI Agent Builder role. 
 
 ## Project Summary
-An AI-assisted reconciliation and close-summary tool that pulls data from the QuickBooks Sandbox API, reconciles it against a deliberately imperfect "bank" dataset, flags anomalies, and uses an LLM agent to draft a plain-language monthly close summary for human review.
+An AI-assisted reconciliation and close-summary tool that pulls data from the QuickBooks Sandbox API, reconciles it against a bank-side dataset, flags anomalies, and uses an LLM agent to draft a plain-language monthly close summary for human review.
 
 **Working name:** Close Copilot (or Monthly Close Assistant)
 
@@ -55,44 +55,17 @@ QuickBooks API → Data Sync Layer → PostgreSQL → Analysis Engine → Agent 
 ### 1. Data Ingestion
 Pull transactions, GL entries, accounts, and vendors from QuickBooks Sandbox via REST API (key endpoints: `Transactions/JournalEntry`, `Purchase`, `Deposit`, `Account`).
 
-### 2. Fake "Bank Feed" for Reconciliation
-QuickBooks sandbox data represents the "recorded" side. A separate "bank" dataset is needed to reconcile against.
+### 2. Bank Feed for Reconciliation
+QuickBooks sandbox data represents the "recorded" (GL) side. A separate "bank" dataset is needed to reconcile against.
 
-**Recommended approach:** Derive the bank feed from the QuickBooks data, then deliberately corrupt it to create realistic discrepancies:
+**Implementation:** For production use the bank side would come from a bank integration or an uploaded statement. For development and testing, the app includes an optional synthetic bank-feed generator that derives rows from the QuickBooks data and introduces configurable discrepancies:
 - Drop ~5% of transactions (missing from bank)
 - Duplicate ~3% (bank shows it twice)
 - Shift amounts slightly on ~4% (rounding/fee differences)
 - Shift dates by 1–2 days on ~5% (posting vs. transaction date)
 - Add a few bank-only transactions with no QuickBooks match
 
-This guarantees known ground truth to validate the reconciliation logic against, and gives a strong interview answer about deliberate testing rigor.
-
-```python
-import pandas as pd
-import random
-
-def corrupt_for_bank_feed(qb_transactions, drop_rate=0.05, dup_rate=0.03,
-                           amount_shift_rate=0.04, date_shift_rate=0.05):
-    bank = qb_transactions.copy()
-
-    # randomly drop some
-    drop_mask = bank.sample(frac=drop_rate).index
-    bank = bank.drop(drop_mask)
-
-    # duplicate some
-    dups = bank.sample(frac=dup_rate)
-    bank = pd.concat([bank, dups])
-
-    # nudge amounts slightly on some
-    amount_shift_idx = bank.sample(frac=amount_shift_rate).index
-    bank.loc[amount_shift_idx, 'amount'] += random.choice([-2.50, -1.00, 1.00, 3.75])
-
-    # shift dates by 1-2 days on some
-    date_shift_idx = bank.sample(frac=date_shift_rate).index
-    bank.loc[date_shift_idx, 'date'] += pd.to_timedelta(random.choice([1, 2, -1]), unit='d')
-
-    return bank.sample(frac=1).reset_index(drop=True)  # shuffle
-```
+This synthetic feed remains useful as a testing tool to validate the reconciliation engine against known ground truth.
 
 ### 3. Reconciliation Check
 Compare bank-side transactions against GL-recorded entries. Flag mismatches in amount, date, or vendor beyond a tolerance, and flag entries present on only one side.
@@ -126,8 +99,8 @@ Feed the agent flagged items plus context (prior month totals, category breakdow
 
 ## Suggested Build Order
 1. QuickBooks sandbox OAuth setup + pull raw data into Postgres
-2. Generate corrupted "bank feed" dataset from QuickBooks data
-3. Reconciliation logic (demoable on its own at this point)
+2. Generate a synthetic bank feed for testing reconciliation (optional)
+3. Reconciliation logic
 4. Anomaly detection rules
 5. Agent summary generation (CrewAI or LangGraph)
 6. HTMX review dashboard
@@ -140,6 +113,6 @@ Feed the agent flagged items plus context (prior month totals, category breakdow
 - **Key talking points:**
   - Deliberate human-in-the-loop design for financial-context AI
   - Explainable, rule-based anomaly detection rather than an opaque ML model
-  - Testing rigor: built known discrepancies into the bank feed to validate reconciliation logic against ground truth
+  - Testing rigor: includes a synthetic bank feed with known discrepancies to validate reconciliation logic against ground truth
   - Architecture choice of HTMX over React/SPA for an internal tool — simplicity matched to use case
   - Direct relevance to medical billing background: compliance-sensitive financial data, process accuracy, revenue cycle exposure

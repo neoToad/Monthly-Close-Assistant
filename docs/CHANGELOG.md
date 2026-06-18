@@ -945,3 +945,50 @@ then documented the manual review in this changelog.
   tested.
 
 ---
+
+## Remove dummy data — `feat(core,ui): remove dummy data, add dashboard actions for real QB workflow`
+
+Switched the app from synthetic demo data to a real QuickBooks-first workflow:
+
+- Removed the fake GL transaction generator:
+  - Deleted `core/demo_seed.py` and `core/management/commands/seed_demo_data.py`.
+  - Removed `faker` from `requirements.txt`.
+  - Removed all `seed_demo_data` references from `README.md` and `docs/DEPLOY.md`.
+- Kept the synthetic bank feed as a testing-only tool:
+  - Updated `core/bank_feed.py` docstring and `generate_bank_feed` help text to
+    clarify it is for reconciliation testing, not production data.
+- Added dashboard actions in `core/views.py`:
+  - `qb_sync_now` — pulls the latest QuickBooks transactions.
+  - `reconcile_month` — runs reconciliation + anomaly detection for the month.
+  - `draft_summary` — drafts (or re-drafts) a close summary for the month.
+- Wired new paths in `core/urls.py` and added HTMX forms to
+  `core/templates/core/dashboard_content.html` with a `notice` banner for status
+  messages.
+- Updated dashboard empty state to prompt users to connect QuickBooks and sync
+  when no transaction data exists for the selected month.
+- Updated `core/templates/core/home.html` to emphasize QuickBooks connection and
+  show "Go to dashboard" / "Connect QuickBooks" CTAs for authenticated users.
+- Removed the Admin link from the anonymous navigation in `core/templates/base.html`.
+- Updated tests:
+  - Removed `SeedDemoDataCommandTests` from `core/tests/test_management.py`.
+  - Added `DashboardActionViewTests` in `core/tests/test_views.py` covering sync,
+    reconcile, and draft-summary actions.
+  - Updated `core/tests/test_home.py` to match the new anonymous nav (no Admin link).
+- Restored the missing `.github/workflows/ci.yml` so the CI/CD tests pass; the
+  workflow builds the Docker compose stack and runs the Django test suite.
+- Updated `docs/Monthly_Close_Assistant_Project.md` to describe the synthetic bank
+  feed as a testing helper rather than the production data path.
+
+**TDD:** wrote `DashboardActionViewTests` first, confirmed they failed before the
+new views existed, then implemented to green. Existing `generate_bank_feed`,
+reconciliation, anomaly, and summary tests continue to pass.
+
+**Improvements beyond the spec:**
+- Added a reusable `_dashboard_context()` / `_render_dashboard()` helper pair so
+  every dashboard action returns a consistent full-page or HTMX-partial view.
+- Added `has_data` to dashboard context so the template can distinguish "no data
+  yet" from "data exists and reconciled cleanly."
+
+**Deviations:** None.
+
+---

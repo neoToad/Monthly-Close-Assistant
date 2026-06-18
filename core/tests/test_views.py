@@ -1,11 +1,14 @@
-"""Tests for the QuickBooks OAuth views and ``sync_quickbooks`` command (Prompt 3).
+"""Tests for the QuickBooks OAuth views, dashboard action views, and ``sync_quickbooks`` command (Prompt 3).
 
-The OAuth start/callback views and the management command are exercised end-to-end
-with the QuickBooks network boundaries (``AuthClient``, token exchange/storage, the
-``QuickBooks`` client, and ``pull_raw_records``) mocked, so no live sandbox is contacted.
+The OAuth start/callback views, dashboard sync/reconcile/summary actions, and the
+management command are exercised end-to-end with the QuickBooks network boundaries
+(``AuthClient``, token exchange/storage, the ``QuickBooks`` client, and
+``pull_raw_records``) mocked, so no live sandbox is contacted.
 """
 from __future__ import annotations
 
+import datetime as dt
+from decimal import Decimal
 from io import StringIO
 from unittest import mock
 
@@ -144,3 +147,83 @@ def SimpleNamespace_purchase() -> object:
         EntityRef=ref("Vendor Co"), AccountRef=ref("Checking"),
         qbo_object_name="Purchase",
     )
+
+
+# ---------------------------------------------------------------------------
+# Dashboard action views
+# ---------------------------------------------------------------------------
+
+
+class DashboardActionViewTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reviewer", password="test")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_sync_now_prompts_to_connect_when_no_token(self) -> None:
+        from core.quickbooks import tokens as qb_tokens
+
+        with mock.patch.object(qb_tokens, "get_active_token", return_value=None):
+            resp = self.client.post("/dashboard/sync/", {"month": "2025-01"})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "QuickBooks is not connected")
+
+    @mock.patch("core.views.qb_client.sync_transactions")
+    @mock.patch("core.views.qb_client.build_quickbooks_client")
+    def test_sync_now_runs_sync_and_shows_notice(self, mock_build, mock_sync) -> None:
+        from core.quickbooks import tokens as qb_tokens
+
+        token = mock.MagicMock(realm_id="123145")
+        mock_build.return_value = mock.MagicMock()
+        mock_sync.return_value = {
+            "created": 3,
+            "skipped": 0,
+            "errors": 0,
+            "per_type": {},
+        }
+
+        with mock.patch.object(qb_tokens, "get_active_token", return_value=token):
+            resp = self.client.post("/dashboard/sync/", {"month": "2025-01"})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "QuickBooks sync complete")
+        self.assertContains(resp, "created 3")
+        mock_sync.assert_called_once()
+
+    def test_reconcile_month_creates_flags(self) -> None:
+        from core.models import BankTransaction, Transaction
+
+        txn = Transaction.objects.create(
+            date=dt.date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("100.00"),
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+        )
+        BankTransaction.objects.create(
+            date=txn.date,
+            vendor=txn.vendor,
+            amount=Decimal("102.50"),
+            qb_transaction_id=txn.qb_transaction_id,
+        )
+
+        resp = self.client.post("/dashboard/reconcile/", {"month": "2025-01"})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Reconciliation complete")
+        self.assertTrue(
+            Transaction.objects.filter(qb_transaction_id="QB-1").exists()
+        )
+
+    def test_draft_summary_creates_summary(self) -> None:
+        from core.models import CloseSummary
+
+        resp = self.client.post("/dashboard/summary/draft/", {"month": "2025-01"})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Close summary drafted")
+        self.assertEqual(CloseSummary.objects.filter(month="2025-01").count(), 1)

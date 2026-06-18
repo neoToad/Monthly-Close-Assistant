@@ -9,9 +9,8 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
 - **QuickBooks sync** — OAuth 2.0 connection to QuickBooks Online, pulls
   Purchase / Deposit / JournalEntry records, and stores them as normalized
   `Transaction` rows.
-- **Fake bank feed** — generates a configurable bank-side transaction set with
-  realistic discrepancies (drops, duplicates, amount/date shifts, extra rows) for
-  testing and demo purposes.
+- **Testing bank feed** — optionally generates a configurable bank-side transaction
+  set with realistic discrepancies for validating reconciliation logic.
 - **Reconciliation engine** — Pandas-based matching on vendor, amount within $0.01,
   and date within 1 day; creates `Flag` records for mismatches and unmatched rows.
 - **Anomaly detection** — rule-based checks for vendor amount z-scores, duplicate
@@ -74,8 +73,7 @@ agent into `core/agent/`.
    git checkout feature/close-assistant-build
    ```
 
-2. Copy `.env.example` to `.env` and fill in real QuickBooks values if you plan to hit
-the live sandbox; otherwise the defaults are fine for tests and demo data:
+2. Copy `.env.example` to `.env` and fill in real QuickBooks values:
 
    ```bash
    cp .env.example .env
@@ -160,19 +158,12 @@ See `.env.example` for the full list and comments.
 | Command | What it does |
 | --- | --- |
 | `python manage.py sync_quickbooks` | Pulls Purchase/Deposit/JournalEntry records from QuickBooks and stores normalized `Transaction` rows. Idempotent keyed on `qb_transaction_id`. |
-| `python manage.py generate_bank_feed YYYY-MM` | Generates the fake bank side for a month with configurable discrepancy rates. Use `--force` to overwrite. |
+| `python manage.py generate_bank_feed YYYY-MM` | *(Testing only)* Generates a synthetic bank side for a month with configurable discrepancy rates. Use `--force` to overwrite. |
 | `python manage.py run_reconciliation YYYY-MM` | Reconciles GL and bank rows for the month and runs anomaly detection. Idempotent. |
 | `python manage.py generate_close_summary YYYY-MM` | Drafts a close summary for the month (LLM if `ANTHROPIC_API_KEY` is set, deterministic fallback otherwise). |
-| `python manage.py seed_demo_data YYYY-MM` | Clears demo data for the month, creates synthetic transactions, bank feed, flags, and a summary. Useful for demos and manual testing. |
 
-Example for a single demo month:
-
-```bash
-docker compose run --rm web python manage.py seed_demo_data 2025-01
-```
-
-Then open http://localhost:8000/dashboard/?month=2025-01 and log in with a Django
-superuser.
+To pull real QuickBooks data, connect your app via `/quickbooks/oauth/start/` and then
+sync from the dashboard or run `python manage.py sync_quickbooks`.
 
 ## Dashboard
 

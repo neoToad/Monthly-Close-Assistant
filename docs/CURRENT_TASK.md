@@ -2,12 +2,11 @@
 
 ## Stage
 
-Design System (Prompts D1–D7).
+Remove dummy data and switch to real QuickBooks data workflow.
 
 ## Current task
 
-**Complete.** D7 — Self-Critique Pass is finished, the full test suite passes,
-and the branch is ready for push.
+**Complete.** Removed the fake GL demo transaction generator (`seed_demo_data`), kept the synthetic bank feed as a testing-only tool, added dashboard actions for QuickBooks sync / reconciliation / close-summary drafting, updated navigation and docs, and verified the full suite (147 tests pass).
 
 ## Branch
 
@@ -15,4 +14,4 @@ and the branch is ready for push.
 
 ## Next step
 
-Push the design-system commits to `feature/close-assistant-build`.
+Commit the changes and push to `feature/close-assistant-build`.

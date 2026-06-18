@@ -13,8 +13,9 @@ from core.bank_feed import generate_bank_feed
 
 class Command(BaseCommand):
     help = (
-        "Generate BankTransaction records for a month from Transaction records, "
-        "introducing configurable discrepancies for reconciliation testing."
+        "(Testing only) Generate synthetic BankTransaction records for a month "
+        "from Transaction records, introducing configurable discrepancies for "
+        "reconciliation testing."
     )
 
     def add_arguments(self, parser) -> None:

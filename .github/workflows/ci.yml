@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/close-assistant-build
+  pull_request:
+    branches:
+      - main
+      - feature/close-assistant-build
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker Compose stack
+        run: docker compose build
+
+      - name: Run Django test suite
+        run: docker compose run --rm web python manage.py test --noinput

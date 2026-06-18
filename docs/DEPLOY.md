@@ -63,8 +63,9 @@ Both must share the same Redis broker/result backend as the web app.
 
 - Visit `/admin/` to confirm Django loads.
 - Run `/quickbooks/oauth/start/` to verify the QuickBooks OAuth redirect.
-- Run `seed_demo_data 2025-01` from a Railway shell to populate demo data and confirm
-the reconciliation / anomaly / summary pipeline works end-to-end.
+- After connecting QuickBooks and syncing, run `generate_bank_feed 2025-01 --force`
+from a Railway shell to create a synthetic bank feed for testing the reconciliation /
+anomaly / summary pipeline end-to-end.
 
 ## Status
 

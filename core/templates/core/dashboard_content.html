@@ -18,6 +18,41 @@
         </div>
     </header>
 
+    {% if notice %}
+        <div class="notice-banner" role="status">{{ notice }}</div>
+    {% endif %}
+
+    {% if not has_data %}
+        <div class="empty-state">
+            <p>No QuickBooks data for {{ month }} yet.</p>
+            <p class="muted">Connect QuickBooks and run a sync to pull transactions for this month.</p>
+        </div>
+    {% endif %}
+
+    <div class="dashboard-actions" aria-label="Dashboard actions">
+        <form hx-post="{% url 'core:qb_sync_now' %}"
+              hx-target="#dashboard-content"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <button type="submit" class="btn primary">Sync QuickBooks</button>
+        </form>
+        <form hx-post="{% url 'core:reconcile_month' %}"
+              hx-target="#dashboard-content"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <button type="submit" class="btn">Run Reconciliation</button>
+        </form>
+        <form hx-post="{% url 'core:draft_summary' %}"
+              hx-target="#dashboard-content"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <button type="submit" class="btn">Draft Close Summary</button>
+        </form>
+    </div>
+
     <div class="status-strip" aria-label="Flag counts for {{ month }}">
         <span><span class="dot flag" aria-hidden="true"></span>{{ flag_counts.open }} open</span>
         <span><span class="dot confirmed" aria-hidden="true"></span>{{ flag_counts.approved }} approved</span>

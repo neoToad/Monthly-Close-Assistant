@@ -1,8 +1,9 @@
-"""Fake bank feed generator for the Monthly Close Assistant (Prompt 6).
+"""Synthetic bank feed generator for the Monthly Close Assistant (Prompt 6).
 
-Derives ``BankTransaction`` rows from a month's ``Transaction`` records and
-deliberately introduces realistic discrepancies so the reconciliation logic can be
-validated against known ground truth. All manipulation uses Pandas.
+This is a **testing-only** helper. It derives ``BankTransaction`` rows from a month's
+``Transaction`` records and deliberately introduces realistic discrepancies so the
+reconciliation logic can be validated against known ground truth. All manipulation
+uses Pandas. It is not intended as a production bank-data source.
 """
 from __future__ import annotations
 

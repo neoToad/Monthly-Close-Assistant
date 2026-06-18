@@ -35,11 +35,11 @@ class NavigationTests(TestCase):
         self.user = User.objects.create_user(username="reviewer", password="pass")
 
     def test_anonymous_nav_links(self) -> None:
-        """Anonymous users see Admin and Log in links, not Dashboard or QB connect."""
+        """Anonymous users see Log in link, not Dashboard, Admin, or QB connect."""
         resp = self.client.get(reverse("core:home"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, reverse("login"))
-        self.assertContains(resp, reverse("admin:index"))
+        self.assertNotContains(resp, reverse("admin:index"))
         self.assertNotContains(resp, reverse("core:dashboard"))
         self.assertNotContains(resp, reverse("core:qb_oauth_start"))
 
@@ -58,5 +58,5 @@ class NavigationTests(TestCase):
         resp = self.client.get(reverse("login"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Close Assistant")
-        self.assertContains(resp, reverse("admin:index"))
         self.assertContains(resp, reverse("login"))
+        self.assertNotContains(resp, reverse("admin:index"))
