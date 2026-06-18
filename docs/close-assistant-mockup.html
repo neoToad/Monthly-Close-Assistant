@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Close Assistant — Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --color-ink: #1C2B3A;
+    --color-paper: #F7F5F0;
+    --color-slate: #5B6B7A;
+    --color-flag: #C9762B;
+    --color-confirmed: #3A6B4C;
+    --color-rejected: #8B3A3A;
+    --color-hairline: #DDD8CC;
+
+    --font-display: "Source Serif 4", Georgia, serif;
+    --font-body: "IBM Plex Sans", -apple-system, sans-serif;
+
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.375rem;
+    --text-2xl: 1.75rem;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-12: 48px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: var(--space-8) var(--space-6) var(--space-12);
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  .title {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .month-select {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    color: var(--color-slate);
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .month-select:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+  }
+  .caret { font-size: 0.7em; position: relative; top: 1px; }
+
+  /* Status ledger strip */
+  .status-strip {
+    display: flex;
+    gap: var(--space-6);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--color-hairline);
+    font-size: var(--text-sm);
+    color: var(--color-slate);
+  }
+  .status-strip span { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.flag { background: var(--color-flag); }
+  .dot.confirmed { background: var(--color-confirmed); }
+  .dot.rejected { background: var(--color-rejected); }
+
+  /* Section eyebrow */
+  .eyebrow {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-slate);
+    margin: var(--space-8) 0 var(--space-2);
+  }
+
+  /* Flagged items table */
+  .ledger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .ledger-row .left { display: flex; flex-direction: column; gap: 2px; }
+  .vendor { font-size: var(--text-base); color: var(--color-ink); }
+  .reason { font-size: var(--text-sm); color: var(--color-slate); }
+  .right { display: flex; align-items: center; gap: var(--space-4); }
+  .amount { font-variant-numeric: tabular-nums; font-size: var(--text-base); min-width: 110px; text-align: right; }
+  .status-label { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); min-width: 84px; }
+  .status-label.open { color: var(--color-flag); }
+  .status-label.confirmed { color: var(--color-confirmed); }
+  .status-label.rejected { color: var(--color-rejected); }
+
+  .actions { display: flex; gap: var(--space-4); }
+  .text-btn {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .text-btn.approve { color: var(--color-confirmed); }
+  .text-btn.reject { color: var(--color-rejected); }
+  .text-btn:hover { text-decoration: underline; }
+  .text-btn:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 3px; }
+
+  .resolved-tag { font-size: var(--text-sm); color: var(--color-slate); }
+
+  /* Draft summary */
+  .summary-block {
+    max-width: 620px;
+    margin-top: var(--space-2);
+  }
+  .summary-month { font-size: var(--text-sm); color: var(--color-slate); margin-bottom: var(--space-4); }
+  .summary-text {
+    font-size: var(--text-base);
+    line-height: 1.6;
+    color: var(--color-ink);
+  }
+  .summary-text strong { font-weight: 500; }
+
+  .summary-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-6);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-hairline);
+  }
+  .notes-field {
+    flex: 1;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-ink);
+    border: 1px solid var(--color-hairline);
+    border-radius: 4px;
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+  }
+  .notes-field:focus { outline: none; border-color: var(--color-slate); }
+  .notes-field::placeholder { color: var(--color-slate); }
+
+  /* Empty state demo (hidden, just for reference) */
+  .empty-state {
+    color: var(--color-slate);
+    font-size: var(--text-base);
+    padding: var(--space-8) 0;
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+
+    <div class="header">
+      <h1 class="title">Close Assistant</h1>
+      <button class="month-select">June 2026 <span class="caret">▾</span></button>
+    </div>
+
+    <div class="status-strip">
+      <span><span class="dot flag"></span>4 open</span>
+      <span><span class="dot confirmed"></span>2 approved</span>
+      <span><span class="dot rejected"></span>1 rejected</span>
+    </div>
+
+    <div class="eyebrow">Flagged Items</div>
+
+    <div class="ledger-row">
+      <div class="left">
+        <span class="vendor">Amber Co.</span>
+        <span class="reason">Bank shows $452.00 but GL shows $450.00</span>
+      </div>
+      <div class="right">
+        <span class="amount">$452.00</span>
+        <span class="status-label open"><span class="dot flag"></span>Open</span>
+        <div class="actions">
+          <button class="text-btn approve">Approve</button>
+          <button class="text-btn reject">Reject</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ledger-row">
+      <div class="left">
+        <span class="vendor">ServerStack LLC</span>
+        <span class="reason">Amount 3.1 standard deviations above vendor average</span>
+      </div>
+      <div class="right">
+        <span class="amount">$1,200.00</span>
+        <span class="status-label open"><span class="dot flag"></span>Open</span>
+        <div class="actions">
+          <button class="text-btn approve">Approve</button>
+          <button class="text-btn reject">Reject</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ledger-row">
+      <div class="left">
+        <span class="vendor">Northwind Supplies</span>
+        <span class="reason">Duplicate transaction detected within 7-day window</span>
+      </div>
+      <div class="right">
+        <span class="amount">$318.40</span>
+        <span class="status-label confirmed"><span class="dot confirmed"></span>Approved</span>
+        <span class="resolved-tag">Reviewed by J. Ortiz</span>
+      </div>
+    </div>
+
+    <div class="ledger-row">
+      <div class="left">
+        <span class="vendor">Quill &amp; Press Media</span>
+        <span class="reason">New vendor, no prior transaction history</span>
+      </div>
+      <div class="right">
+        <span class="amount">$675.00</span>
+        <span class="status-label rejected"><span class="dot rejected"></span>Rejected</span>
+        <span class="resolved-tag">Reviewed by J. Ortiz</span>
+      </div>
+    </div>
+
+    <div class="eyebrow">Draft Summary</div>
+    <div class="summary-block">
+      <div class="summary-month">June 2026</div>
+      <div class="summary-text">
+        This month, four items were flagged for review. <strong>Amber Co.</strong>
+        shows a $2.00 discrepancy between the bank feed and the general ledger,
+        likely a timing or fee difference. <strong>ServerStack LLC</strong>'s payment
+        of $1,200 is significantly above their historical average and may warrant
+        a closer look. A duplicate charge from <strong>Northwind Supplies</strong>
+        was caught and has been approved as a legitimate double order. A new
+        vendor, <strong>Quill &amp; Press Media</strong>, was flagged for having no
+        prior history and was rejected pending further documentation.
+      </div>
+      <div class="summary-footer">
+        <button class="text-btn approve">Mark Reviewed</button>
+        <input class="notes-field" type="text" placeholder="Add a note before marking reviewed…">
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

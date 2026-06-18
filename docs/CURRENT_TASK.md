@@ -2,16 +2,20 @@
 
 ## Stage
 
-Build (Prompts 4–18) — **COMPLETE**. Prompt 18 (README) is done.
+Design System (Prompts D1–D7).
 
 ## Current task
 
-No active build task. All required prompts through Prompt 18 are committed and pushed
-to `feature/close-assistant-build`.
+**D1 — Design Tokens & Base Styles**
 
-Per the build instructions, stop here — do not start stretch prompts and do not open a
-pull request unless explicitly asked.
+Create `core/static/css/tokens.css`, load the Google Fonts in `base.html`, and
+apply the ledger design-tokens globally. Start with failing tests that assert the
+tokens, font links, and stylesheet link are present.
 
 ## Branch
 
 `feature/close-assistant-build`
+
+## Next step
+
+D2 — Page Shell & Header (after D1 is committed and pushed).

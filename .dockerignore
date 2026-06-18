@@ -1,5 +1,4 @@
 .git
-.github
 .env
 .venv
 *.pyc
@@ -14,3 +13,4 @@ postgres-data/
 close_pg_data/
 *.md
 !README.md
+!.github/**/*.md

@@ -716,3 +716,30 @@ UTF-8 README covering all required sections, and the tests passed. Full suite:
 **Deviations:** None. The build stops after Prompt 18 per the original instructions;
 no stretch prompts or PR were opened.
 
+---
+
+## Pre-design-system cleanup — `chore(docs,docker): pre-design-system cleanup`
+
+Committed the uncommitted workspace changes that accumulated before the design
+system stage so the D1–D7 commits stay isolated:
+
+- Added `docs/Monthly_Close_Assistant_Design_System_Prompts.md` and
+  `docs/close-assistant-mockup.html`.
+- Refreshed `docs/prompts/long_horizon_prompt_foundation.md` and
+  `docs/prompts/examples/long_horizon_prompt_example.md` to match the completed
+  foundation/build stages, and added the design-system long-horizon prompt at
+  `docs/prompts/long_horizon_prompt_design_system.md`.
+- Reorganized docs: moved the phase-2 plan to
+  `docs/plans/Monthly_Close_Assistant_CLI_Agent_Prompts_Phase2.md`.
+- Removed the deprecated `docs/Monthly_Close_Assistant_CLI_Agent_Prompts_Full.md`.
+- Kept `docs/DEPLOY.md` in its original location so existing README links and
+  `core/tests/test_deploy.py` continue to pass.
+- Cleared `docs/TODO.md` now that build prompts 1–18 are complete.
+- Switched `docker-compose.yml` to `env_file: .env` for web/worker/beat/db and
+  trimmed duplicated per-variable environment blocks; updated `.dockerignore` to
+  keep `.github/**/*.md` for the README reference.
+
+**Deviations:** None. No code behavior changed; tests continue to pass from the
+previous stage.
+
+---
