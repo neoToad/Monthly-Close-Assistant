@@ -55,14 +55,17 @@ class OAuthCallbackViewTests(TestCase):
         client = self._session_with_state(Client(), state)
 
         with mock.patch.object(qb_client, "exchange_code_for_tokens") as mock_exchange, \
-             mock.patch.object(qb_tokens, "store_tokens") as mock_store:
+             mock.patch.object(qb_tokens, "store_tokens") as mock_store, \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", return_value=""):
             # exchange_code_for_tokens returns the populated auth_client-like object.
             exchanged = mock.MagicMock(
                 access_token="at", refresh_token="rt", expires_in=3600,
                 x_refresh_token_expires_in=8700000, realm_id="123145",
             )
             mock_exchange.return_value = exchanged
-            mock_store.return_value = mock.MagicMock()
+            mock_store.return_value = mock.MagicMock(realm_id="123145")
+            mock_build.return_value = mock.MagicMock()
 
             resp = client.get(
                 "/quickbooks/oauth/callback/",
@@ -89,6 +92,68 @@ class OAuthCallbackViewTests(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_callback_stores_quickbooks_company_name(self) -> None:
+        from core.models import QuickBooksCompany
+
+        state = "the-state"
+        client = self._session_with_state(Client(), state)
+        QuickBooksCompany.objects.create(realm_id="123145", name="")
+
+        with mock.patch.object(qb_client, "make_auth_client") as mock_make, \
+             mock.patch.object(qb_client, "exchange_code_for_tokens") as mock_exchange, \
+             mock.patch.object(qb_tokens, "store_tokens") as mock_store, \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", return_value="Demo Co"):
+            mock_auth_client = mock.MagicMock()
+            mock_make.return_value = mock_auth_client
+            exchanged = mock.MagicMock(
+                access_token="at", refresh_token="rt", expires_in=3600,
+                x_refresh_token_expires_in=8700000, realm_id="123145",
+            )
+            mock_exchange.return_value = exchanged
+            mock_store.return_value = mock.MagicMock(realm_id="123145")
+            mock_build.return_value = mock.MagicMock()
+
+            resp = client.get(
+                "/quickbooks/oauth/callback/",
+                {"code": "the-code", "realmId": "123145", "state": state},
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        company = QuickBooksCompany.objects.get(realm_id="123145")
+        self.assertEqual(company.name, "Demo Co")
+
+    def test_callback_redirects_when_company_name_fetch_fails(self) -> None:
+        from core.models import QuickBooksCompany
+
+        state = "the-state"
+        client = self._session_with_state(Client(), state)
+        QuickBooksCompany.objects.create(realm_id="123145", name="")
+
+        with mock.patch.object(qb_client, "make_auth_client") as mock_make, \
+             mock.patch.object(qb_client, "exchange_code_for_tokens") as mock_exchange, \
+             mock.patch.object(qb_tokens, "store_tokens") as mock_store, \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", side_effect=Exception("lookup failed")):
+            mock_auth_client = mock.MagicMock()
+            mock_make.return_value = mock_auth_client
+            exchanged = mock.MagicMock(
+                access_token="at", refresh_token="rt", expires_in=3600,
+                x_refresh_token_expires_in=8700000, realm_id="123145",
+            )
+            mock_exchange.return_value = exchanged
+            mock_store.return_value = mock.MagicMock(realm_id="123145")
+            mock_build.return_value = mock.MagicMock()
+
+            resp = client.get(
+                "/quickbooks/oauth/callback/",
+                {"code": "the-code", "realmId": "123145", "state": state},
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        company = QuickBooksCompany.objects.get(realm_id="123145")
+        self.assertEqual(company.name, "")
+
 
 class SyncCommandTests(TestCase):
     def test_no_stored_token_raises_command_error(self) -> None:
@@ -108,6 +173,7 @@ class SyncCommandTests(TestCase):
         out = StringIO()
         with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
              mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", "--realm-id", "123145", stdout=out)
@@ -129,12 +195,33 @@ class SyncCommandTests(TestCase):
         }
         with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
              mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
             self.assertEqual(Transaction.objects.count(), 1)
             call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
             self.assertEqual(Transaction.objects.count(), 1)
+
+    def test_command_updates_company_name(self) -> None:
+        from core.models import QuickBooksCompany, Transaction
+
+        token = mock.MagicMock(realm_id="123145")
+        raw = {
+            "Purchase": [SimpleNamespace_purchase()],
+            "Deposit": [],
+            "JournalEntry": [],
+        }
+        with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", return_value="Demo Co"), \
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+            mock_build.return_value = mock.MagicMock()
+            call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
+
+        self.assertEqual(Transaction.objects.filter(realm_id="123145").count(), 1)
+        company = QuickBooksCompany.objects.get(realm_id="123145")
+        self.assertEqual(company.name, "Demo Co")
 
 
 def SimpleNamespace_purchase() -> object:

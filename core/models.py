@@ -296,6 +296,7 @@ class QBToken(models.Model):
         return self.access_token_expires_at <= timezone.now() + buffer
 
 
+
 class QuickBooksCompany(models.Model):
     """Lightweight metadata about a connected QuickBooks realm.
 
@@ -326,31 +327,3 @@ class QuickBooksCompany(models.Model):
 
     def __str__(self) -> str:
         return self.name or self.realm_id
-
-    def get_access_token(self) -> str:
-        from core.quickbooks.tokens import decrypt_value
-
-        return decrypt_value(self.access_token_encrypted)
-
-    def get_refresh_token(self) -> str:
-        from core.quickbooks.tokens import decrypt_value
-
-        return decrypt_value(self.refresh_token_encrypted)
-
-    def is_access_token_expired(self, buffer_minutes: Optional[int] = None) -> bool:
-        """Return True when the access token is expired or within the refresh buffer.
-
-        ``buffer_minutes`` defaults to ``QB_TOKEN_REFRESH_BUFFER_MINUTES`` from
-        Django settings (Prompt 4). A token expiring inside that window is treated as
-        expired so it can be refreshed before the QuickBooks API rejects it mid-sync.
-        """
-        if self.access_token_expires_at is None:
-            return True
-
-        if buffer_minutes is None:
-            from django.conf import settings
-
-            buffer_minutes = getattr(settings, "QB_TOKEN_REFRESH_BUFFER_MINUTES", 15)
-
-        buffer = dt.timedelta(minutes=int(buffer_minutes))
-        return self.access_token_expires_at <= timezone.now() + buffer

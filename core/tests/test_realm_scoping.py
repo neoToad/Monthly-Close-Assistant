@@ -59,6 +59,16 @@ class QuickBooksCompanyModelTests(TestCase):
         company = QuickBooksCompany.objects.create(realm_id="no-name-realm")
         self.assertIn("no-name-realm", str(company))
 
+    def test_no_spurious_token_methods(self) -> None:
+        """Regression: QuickBooksCompany must not carry QBToken-only accessors."""
+        company = QuickBooksCompany.objects.create(realm_id="clean-realm")
+        for method in ("get_access_token", "get_refresh_token", "is_access_token_expired"):
+            with self.subTest(method=method):
+                self.assertFalse(
+                    hasattr(company, method) and callable(getattr(company, method)),
+                    f"QuickBooksCompany should not have a {method} method",
+                )
+
 
 class RealmIdFieldTests(TestCase):
     def test_transaction_requires_realm_id(self) -> None:

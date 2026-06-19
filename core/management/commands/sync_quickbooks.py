@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
+from core.models import QuickBooksCompany
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
 
@@ -46,10 +47,20 @@ class Command(BaseCommand):
         for token in tokens:
             if token is None:
                 continue
-            self.stdout.write(self.style.NOTICE(
-                f"Syncing QuickBooks realm {token.realm_id}..."
-            ))
             qb = qb_client.build_quickbooks_client(token)
+
+            # Refresh the company display name before pulling transactions.
+            name = qb_client.fetch_company_name(qb, qb_token=token)
+            if name:
+                QuickBooksCompany.objects.update_or_create(
+                    realm_id=token.realm_id,
+                    defaults={"name": name},
+                )
+
+            display = f" ({name})" if name else ""
+            self.stdout.write(self.style.NOTICE(
+                f"Syncing QuickBooks realm {token.realm_id}{display}..."
+            ))
             result = qb_client.sync_transactions(qb, qb_token=token, realm_id=token.realm_id)
 
             if result.get("errors"):

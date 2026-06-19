@@ -172,8 +172,11 @@ sync from the dashboard or run `python manage.py sync_quickbooks`.
 
 The review dashboard lives at `/dashboard/` and requires authentication. It shows:
 
+- A **company selector** that filters every view by the connected QuickBooks realm.
+  Company names are fetched automatically from QuickBooks; the selector falls back to
+  the raw `realm_id` when a name is unavailable.
 - A month selector that HTMX-swaps the dashboard content.
-- All open flags for the selected month with Approve / Reject actions.
+- All open flags for the selected company and month with Approve / Reject actions.
 - The current close summary and a form to mark it reviewed with notes.
 
 Create a user for local testing:
@@ -194,9 +197,12 @@ credentials were available.
 
 ## CI/CD
 
-`.github/workflows/ci.yml` runs on every push and pull request to `main` and
-`feature/close-assistant-build`. It builds the Docker compose stack and runs the full
-Django test suite inside the `web` container.
+The GitHub Actions workflow was removed from this branch. Run the test suite locally
+inside the Docker `web` container:
+
+```bash
+docker compose exec web python manage.py test --noinput
+```
 
 ## License
 

@@ -64,13 +64,14 @@ def _expiry(now: Any, seconds: Optional[int]):
     return now + timedelta(seconds=int(seconds))
 
 
-def store_tokens(auth_client: Any, realm_id: Optional[str] = None):
+def store_tokens(auth_client: Any, realm_id: Optional[str] = None, company_name: str = ""):
     """Persist the access/refresh tokens carried on an ``AuthClient`` to ``QBToken``.
 
     ``auth_client`` is an Intuit ``AuthClient`` (or a mock with the same attributes)
     that has just exchanged a code or refreshed. Tokens are encrypted at rest and
     the row is upserted on ``realm_id`` (the QuickBooks company id). Also creates or
-    updates the corresponding ``QuickBooksCompany`` record.
+    updates the corresponding ``QuickBooksCompany`` record, preserving any existing
+    ``name`` unless a non-empty ``company_name`` is explicitly supplied.
     """
     from core.models import QBToken, QuickBooksCompany
 
@@ -88,9 +89,12 @@ def store_tokens(auth_client: Any, realm_id: Optional[str] = None):
     token, _created = QBToken.objects.update_or_create(
         realm_id=realm_id, defaults=defaults
     )
+    company_defaults: dict[str, Any] = {"is_connected": True}
+    if company_name:
+        company_defaults["name"] = company_name
     QuickBooksCompany.objects.update_or_create(
         realm_id=realm_id,
-        defaults={"is_connected": True},
+        defaults=company_defaults,
     )
     return token
 

@@ -14,6 +14,16 @@
 - [x] Update README / DEPLOY / project docs.
 - [x] Run full test suite and commit.
 
+## QuickBooks company name fetch
+
+- [x] Add `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`.
+- [x] Update `store_tokens` to accept and preserve `company_name`.
+- [x] Fetch and store name during OAuth callback.
+- [x] Refresh name during `sync_quickbooks` command.
+- [x] Remove spurious token methods from `QuickBooksCompany`.
+- [x] Write TDD tests for name fetch, callback, sync command, and model cleanup.
+- [x] Update docs (`PLAN.md`, `CHANGELOG.md`, `README.md`, `CURRENT_TASK.md`).
+
 ## Design System (D1–D7)
 
 - [x] D1 — Design Tokens & Base Styles

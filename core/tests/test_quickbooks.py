@@ -122,6 +122,37 @@ class StoreTokensTests(TestCase):
         company = QuickBooksCompany.objects.get(realm_id="12345")
         self.assertTrue(company.is_connected)
 
+    def test_store_tokens_sets_company_name_when_provided(self) -> None:
+        from core.models import QuickBooksCompany
+
+        auth_client = SimpleNamespace(
+            access_token="at",
+            refresh_token="rt",
+            expires_in=3600,
+            x_refresh_token_expires_in=8700000,
+            realm_id="12345",
+        )
+        store_tokens(auth_client, realm_id="12345", company_name="Demo Co")
+
+        company = QuickBooksCompany.objects.get(realm_id="12345")
+        self.assertEqual(company.name, "Demo Co")
+
+    def test_store_tokens_preserves_existing_name_when_not_provided(self) -> None:
+        from core.models import QuickBooksCompany
+
+        QuickBooksCompany.objects.create(realm_id="12345", name="Existing Name")
+        auth_client = SimpleNamespace(
+            access_token="at",
+            refresh_token="rt",
+            expires_in=3600,
+            x_refresh_token_expires_in=8700000,
+            realm_id="12345",
+        )
+        store_tokens(auth_client, realm_id="12345")
+
+        company = QuickBooksCompany.objects.get(realm_id="12345")
+        self.assertEqual(company.name, "Existing Name")
+
 
 # ---------------------------------------------------------------------------
 # normalize_record
@@ -465,3 +496,51 @@ class RetryAndRefreshTests(TestCase):
 
         self.assertEqual(result, "success")
         self.assertEqual(calls, ["op", "op"])
+
+
+# ---------------------------------------------------------------------------
+# fetch_company_name
+# ---------------------------------------------------------------------------
+
+
+class FetchCompanyNameTests(SimpleTestCase):
+    def _company_info(self, *, company_name: str = "", legal_name: str = "") -> SimpleNamespace:
+        return SimpleNamespace(CompanyName=company_name, LegalName=legal_name)
+
+    @mock.patch.object(qb_client, "CompanyInfo")
+    def test_returns_company_name(self, mock_company_info) -> None:
+        mock_company_info.get.return_value = self._company_info(company_name="Demo Co")
+
+        result = qb_client.fetch_company_name(mock.MagicMock())
+
+        self.assertEqual(result, "Demo Co")
+        mock_company_info.get.assert_called_once_with(id=1, qb=mock.ANY)
+
+    @mock.patch.object(qb_client, "CompanyInfo")
+    def test_falls_back_to_legal_name(self, mock_company_info) -> None:
+        mock_company_info.get.return_value = self._company_info(legal_name="Legal LLC")
+
+        result = qb_client.fetch_company_name(mock.MagicMock())
+
+        self.assertEqual(result, "Legal LLC")
+
+    @mock.patch.object(qb_client, "CompanyInfo")
+    def test_returns_empty_when_both_blank(self, mock_company_info) -> None:
+        mock_company_info.get.return_value = self._company_info()
+
+        result = qb_client.fetch_company_name(mock.MagicMock())
+
+        self.assertEqual(result, "")
+
+    @mock.patch.object(qb_client, "CompanyInfo")
+    def test_returns_empty_and_logs_on_api_failure(self, mock_company_info) -> None:
+        mock_company_info.get.side_effect = Exception("API down")
+
+        with self.assertLogs("core.quickbooks.client", level="WARNING") as cm:
+            result = qb_client.fetch_company_name(mock.MagicMock())
+
+        self.assertEqual(result, "")
+        self.assertTrue(
+            any("API down" in message for message in cm.output),
+            f"Expected warning to mention API error, got: {cm.output}",
+        )

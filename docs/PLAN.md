@@ -9,7 +9,7 @@ Scope all data and dashboard actions by QuickBooks realm (company), allowing mul
 ## Approach
 Followed the plan in `docs/plans/multi_company_qb_plan.md` with these concrete decisions:
 
-1. **Company name source:** Defer fetching from QuickBooks API. `QuickBooksCompany` stores `realm_id` and an optional `name`; the UI falls back to `realm_id` when `name` is blank. Names can be edited in Django admin later.
+1. **Company name source:** Fetch from the QuickBooks Online `CompanyInfo` endpoint. `QuickBooksCompany.name` is populated automatically during OAuth and refreshed on every `sync_quickbooks` run. Manually edited names are preserved when the API returns blank.
 2. **Default company behavior:** When no `company` query parameter is provided, default to the most recently connected realm (`QBToken.objects.order_by("-updated_at").first()`).
 3. **CloseSummary uniqueness:** Changed from unique `(month)` to unique together `(realm_id, month)`.
 4. **Transaction uniqueness:** Changed from unique `qb_transaction_id` to unique together `(realm_id, qb_transaction_id)` so transaction IDs from different companies do not collide.

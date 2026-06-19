@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import logging
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
@@ -37,6 +38,8 @@ from core.models import (
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
 from core.reconciliation.engine import run_reconciliation
+
+logger = logging.getLogger(__name__)
 
 
 @require_http_methods(["GET"])
@@ -74,9 +77,18 @@ def qb_oauth_callback(request):
     try:
         auth_client = qb_client.make_auth_client(realm_id=realm_id)
         exchanged = qb_client.exchange_code_for_tokens(auth_client, code, realm_id)
-        qb_tokens.store_tokens(exchanged, realm_id=realm_id)
+        token = qb_tokens.store_tokens(exchanged, realm_id=realm_id)
     except Exception:  # noqa: BLE001 — surface any exchange/storage failure to the user
         return HttpResponseBadRequest("QuickBooks token exchange failed.")
+
+    # Best-effort fetch of the company display name; never block the OAuth redirect.
+    try:
+        qb = qb_client.build_quickbooks_client(token)
+        name = qb_client.fetch_company_name(qb, qb_token=token)
+        if name:
+            QuickBooksCompany.objects.filter(realm_id=realm_id).update(name=name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not fetch company name for realm %s: %s", realm_id, exc)
 
     request.session.pop("qb_oauth_state", None)
     return HttpResponseRedirect(reverse("core:dashboard"))

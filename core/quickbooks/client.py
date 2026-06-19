@@ -29,6 +29,7 @@ from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from quickbooks import QuickBooks
 from quickbooks.exceptions import AuthorizationException, QuickbooksException
+from quickbooks.objects.company_info import CompanyInfo
 from quickbooks.objects.deposit import Deposit
 from quickbooks.objects.journalentry import JournalEntry
 from quickbooks.objects.purchase import Purchase
@@ -257,6 +258,27 @@ def build_quickbooks_client(qb_token) -> QuickBooks:
         refresh_token=qb_token.get_refresh_token(),
         minorversion=75,
     )
+
+
+def fetch_company_name(qb_client: QuickBooks, qb_token: Optional[Any] = None) -> str:
+    """Fetch the display name for the connected QuickBooks company.
+
+    Reads the ``CompanyInfo`` endpoint (``GET /company/{realmId}/companyinfo/1``),
+    returning ``CompanyName`` with a fallback to ``LegalName``. Logs a warning and
+    returns ``""`` on failure so callers (OAuth callback, sync) never crash the
+    user-facing flow.
+    """
+
+    def _fetch(client: QuickBooks) -> Any:
+        return CompanyInfo.get(id=1, qb=client)
+
+    try:
+        info = call_with_retry(qb_client, qb_token, _fetch)
+    except Exception as exc:  # noqa: BLE001 — name lookup is best-effort
+        logger.warning("Failed to fetch QuickBooks company name: %s", exc)
+        return ""
+
+    return str(getattr(info, "CompanyName", "") or getattr(info, "LegalName", "") or "")
 
 
 
