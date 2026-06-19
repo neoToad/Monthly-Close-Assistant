@@ -2,20 +2,25 @@
 
 ## Stage
 
-`docs/plans/add_quickbooks_data_sources_plan.md` is complete and committed.
+Bank balance reconciliation implementation is complete per
+`docs/plans/bank_balance_reconciliation_plan.md`.
 
 ## Current task
 
-All six steps of the QuickBooks data-source expansion are implemented:
+Finalizing: commit the changes with the documented commit message and update
+`docs/CHANGELOG.md`.
 
-1. ✅ Extended `SourceType` and added `QBAccount` model + migration.
-2. ✅ Sync Bills, BillPayments, VendorCredits, and Accounts.
-3. ✅ Added test coverage for normalization, account sync, and realm isolation.
-4. ✅ Scoped bank feed to cash-like transaction types with `--cash-only`.
-5. ✅ Added GeneralLedger report cross-check in close summary.
-6. ✅ Updated project documentation.
+## Completed work
 
-Full test suite: **211 tests pass** inside Docker.
+1. ✅ Added `BankStatementBalance` model, `FlagType.BALANCE_RECONCILIATION`, migration,
+   and admin registration with tests.
+2. ✅ Added `set_bank_balance` management command for manual ending-balance entry with tests.
+3. ✅ Added QB `fetch_account_current_balances()` helper and `seed_bank_balances` command
+   with mocked tests.
+4. ✅ Added `check_account_balances()` in `core/reconciliation/engine.py`, wired it into
+   `run_reconciliation()`, and added balance reconciliation tests.
+5. ✅ Updated README, CHANGELOG, CURRENT_TASK, and TODO.
+6. ✅ Full test suite passes: **227 tests**.
 
 ## Branch
 
@@ -23,4 +28,4 @@ Full test suite: **211 tests pass** inside Docker.
 
 ## Next step
 
-Await further instructions.
+Run final tests, then commit.

@@ -3,6 +3,33 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(reconcile): add account-level bank balance reconciliation
+
+- Added `BankStatementBalance` model keyed on `(realm_id, qb_account_id, month)` to
+  store the ending bank balance for a cash account, plus a `source` field tracking
+  whether the value came from a manual entry, QB API, CSV upload, or bank feed.
+- Added `FlagType.BALANCE_RECONCILIATION` and a nullable `bank_statement_balance` FK
+  on `Flag` so balance-reconciliation flags can be replaced idempotently by account
+  and month.
+- Added `set_bank_balance` management command for manual ending-balance entry.
+- Added `core/quickbooks/client.py::fetch_account_current_balances()` and the
+  `seed_bank_balances` management command as a sandbox convenience to populate
+  `BankStatementBalance` from QuickBooks' live `CurrentBalance` values.
+- Added `check_account_balances()` in `core/reconciliation/engine.py`; it sums GL
+  activity by account name and creates a `HIGH` severity flag when the stored bank
+  balance differs from the posted GL total by more than $0.01.
+- Wired `check_account_balances()` into `run_reconciliation()` and updated the
+  `run_reconciliation` command output to show `Accounts checked` and `Balance flags`.
+- Added model, command, and engine tests; full suite now passes **227 tests**.
+
+## docs(reconcile): document bank balance reconciliation feature
+
+- Updated README feature list and management-command table to describe the new
+  `set_bank_balance` and `seed_bank_balances` commands and the balance-level
+  reconciliation check.
+- Updated `docs/CURRENT_TASK.md` and appended the feature entry to
+  `docs/CHANGELOG.md`.
+
 ## feat(models): add QBAccount model and extend SourceType choices
 
 - Added `Bill`, `BillPayment`, and `VendorCredit` to `core.models.SourceType`.

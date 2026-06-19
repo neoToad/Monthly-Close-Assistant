@@ -16,6 +16,8 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
   Deposit, BillPayment, and cash-like JournalEntry lines).
 - **Reconciliation engine** — Pandas-based matching on vendor, amount within $0.01,
   and date within 1 day; creates `Flag` records for mismatches and unmatched rows.
+  Also performs account-level balance reconciliation by comparing stored bank
+  statement balances to posted GL totals for each cash account.
 - **Anomaly detection** — rule-based checks for vendor amount z-scores, duplicate
   transactions within 7 days, new vendors, and category month-over-month jumps > 200%.
 - **Close-summary agent** — LangGraph/LangChain-Anthropic agent that drafts a
@@ -134,7 +136,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **211 tests pass**.
+The latest full-suite result: **227 tests pass**.
 
 ## Required environment variables
 
@@ -166,8 +168,10 @@ See `.env.example` for the full list and comments.
 | --- | --- |
 | `python manage.py sync_quickbooks` | Pulls records for all connected QuickBooks realms, or use `--realm-id` to sync one. Now includes `Bill`, `BillPayment`, `VendorCredit`, and the chart of accounts (`QBAccount`). Idempotent keyed on `(realm_id, qb_transaction_id)`. Use `--skip-accounts` to skip chart sync. |
 | `python manage.py generate_bank_feed YYYY-MM` | *(Testing only)* Generates a synthetic bank side for a month. Use `--realm-id` to scope to one realm, `--force` to overwrite, and `--cash-only` to restrict to cash-movement sources. |
-| `python manage.py run_reconciliation YYYY-MM` | Reconciles GL and bank rows for the month; use `--realm-id` to scope to one realm. Runs anomaly detection. Idempotent. |
+| `python manage.py run_reconciliation YYYY-MM` | Reconciles GL and bank rows for the month; use `--realm-id` to scope to one realm. Runs anomaly detection and account-level balance checks. Idempotent. |
 | `python manage.py generate_close_summary YYYY-MM` | Drafts a close summary for the month; use `--realm-id` to scope to one realm. Cross-checks against the QuickBooks GeneralLedger report when a client is available. |
+| `python manage.py set_bank_balance YYYY-MM --realm-id <id> --account-id <id> --balance <amount>` | Manually set the ending bank balance for a cash account and month. Used by the balance-reconciliation check. |
+| `python manage.py seed_bank_balances YYYY-MM --realm-id <id>` | *(Sandbox convenience)* Pull current account balances from QuickBooks and seed `BankStatementBalance` rows for cash-like accounts. Use `--force` to overwrite. |
 
 To pull real QuickBooks data, connect your app via `/quickbooks/oauth/start/` and then
 sync from the dashboard or run `python manage.py sync_quickbooks`.
