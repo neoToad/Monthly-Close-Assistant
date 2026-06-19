@@ -29,12 +29,16 @@ from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from quickbooks import QuickBooks
 from quickbooks.exceptions import AuthorizationException, QuickbooksException
+from quickbooks.objects.account import Account
+from quickbooks.objects.bill import Bill
+from quickbooks.objects.billpayment import BillPayment
 from quickbooks.objects.company_info import CompanyInfo
 from quickbooks.objects.deposit import Deposit
 from quickbooks.objects.journalentry import JournalEntry
 from quickbooks.objects.purchase import Purchase
+from quickbooks.objects.vendorcredit import VendorCredit
 
-from core.models import Transaction
+from core.models import QBAccount, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,9 @@ SYNC_OBJECTS = {
     "Purchase": Purchase,
     "Deposit": Deposit,
     "JournalEntry": JournalEntry,
+    "Bill": Bill,
+    "BillPayment": BillPayment,
+    "VendorCredit": VendorCredit,
 }
 
 
@@ -334,6 +341,16 @@ def _first_debit_account(record: Any) -> str:
     return ""
 
 
+def _first_line_account(record: Any) -> str:
+    """The GL account from the first Line.AccountRef of Bill / VendorCredit."""
+    lines = getattr(record, "Line", None) or []
+    for line in lines:
+        account_ref = getattr(line, "AccountRef", None)
+        if account_ref is not None:
+            return _ref_name(account_ref)
+    return ""
+
+
 def normalize_record(record: Any, source_type: str) -> Optional[dict]:
     """Normalize a QuickBooks record into the ``Transaction`` field dict.
 
@@ -356,6 +373,17 @@ def normalize_record(record: Any, source_type: str) -> Optional[dict]:
     elif source_type == "JournalEntry":
         vendor = "Journal Entry"
         gl_account = _first_debit_account(record)
+    elif source_type == "Bill":
+        vendor = _ref_name(getattr(record, "VendorRef", None)) or "Unknown Vendor"
+        gl_account = _first_line_account(record) or _ref_name(getattr(record, "APAccountRef", None))
+    elif source_type == "BillPayment":
+        vendor = _ref_name(getattr(record, "VendorRef", None)) or "Unknown Vendor"
+        bank_ref = getattr(record, "BankAccountRef", None)
+        cc_ref = getattr(record, "CreditCardAccountRef", None)
+        gl_account = _ref_name(bank_ref) if bank_ref is not None else _ref_name(cc_ref)
+    elif source_type == "VendorCredit":
+        vendor = _ref_name(getattr(record, "VendorRef", None)) or "Unknown Vendor"
+        gl_account = _first_line_account(record)
     else:
         vendor = getattr(record, "qbo_object_name", "") or "Unknown"
         gl_account = ""
@@ -425,3 +453,56 @@ def sync_transactions(
 
     logger.info("sync_quickbooks: created=%s skipped=%s", created, skipped)
     return {"created": created, "skipped": skipped, "errors": 0, "per_type": per_type}
+
+
+def sync_accounts(
+    qb_client: QuickBooks,
+    qb_token: Optional[Any] = None,
+    realm_id: Optional[str] = None,
+) -> dict:
+    """Pull the QuickBooks chart of accounts and upsert into ``QBAccount``.
+
+    Idempotency is keyed on ``(realm_id, account_id)``. Existing rows are updated
+    so names, types, and active status stay in sync with QBO.
+    """
+    realm_id = realm_id or getattr(qb_token, "realm_id", None) or ""
+
+    def _fetch(client: QuickBooks) -> list:
+        return Account.all(qb=client)
+
+    try:
+        accounts = call_with_retry(qb_client, qb_token, _fetch)
+    except Exception as exc:  # noqa: BLE001 — final API failure is reported, not crashed
+        logger.exception("sync_accounts: failed to pull accounts from QuickBooks")
+        return {
+            "created": 0,
+            "updated": 0,
+            "errors": 1,
+            "error_message": str(exc),
+        }
+
+    created = updated = 0
+    for account in accounts:
+        account_id = str(getattr(account, "Id", "") or "")
+        name = str(getattr(account, "Name", "") or "")
+        if not account_id or not name:
+            continue
+
+        defaults = {
+            "name": name,
+            "account_type": str(getattr(account, "AccountType", "") or ""),
+            "account_sub_type": str(getattr(account, "AccountSubType", "") or ""),
+            "active": bool(getattr(account, "Active", True)),
+        }
+        obj, was_created = QBAccount.objects.update_or_create(
+            realm_id=realm_id,
+            account_id=account_id,
+            defaults=defaults,
+        )
+        if was_created:
+            created += 1
+        else:
+            updated += 1
+
+    logger.info("sync_accounts: created=%s updated=%s", created, updated)
+    return {"created": created, "updated": updated, "errors": 0}

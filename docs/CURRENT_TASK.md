@@ -6,10 +6,12 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Current step
 
-**Step 1 — Extend the schema**
-- Add `Bill`, `BillPayment`, `VendorCredit` to `core.models.SourceType`.
-- Add `QBAccount` chart-of-accounts model and migration `0004_qbaccount.py`.
-- Write failing model tests first, then make them pass.
+**Step 2 — Sync the new transaction types**
+- Import `Bill`, `BillPayment`, `VendorCredit` and extend `SYNC_OBJECTS`.
+- Extend `normalize_record()` for the three AP types.
+- Add `sync_accounts()` helper and wire it into `sync_quickbooks`.
+- Print per-type counts for the new transaction sources.
+- Write failing tests first, then implement.
 
 ## Branch
 
@@ -17,4 +19,4 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Next step
 
-Commit `feat(models): add QBAccount model and extend SourceType choices`, then begin Step 2.
+Commit `feat(qb): sync Bills, BillPayments, VendorCredits, and Accounts`, then begin Step 3.

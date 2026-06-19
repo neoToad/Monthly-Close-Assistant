@@ -259,7 +259,8 @@ class RealmIsolationSyncCommandTests(TestCase):
         with mock.patch.object(qb_tokens, "get_active_tokens", return_value=[token_a, token_b]), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
-             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw), \
+             mock.patch.object(qb_client, "sync_accounts", return_value={"created": 0, "updated": 0, "errors": 0}):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", stdout=out)
 
@@ -278,7 +279,8 @@ class RealmIsolationSyncCommandTests(TestCase):
              mock.patch.object(qb_tokens, "get_active_tokens", return_value=[token_a, token_b]), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
-             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw), \
+             mock.patch.object(qb_client, "sync_accounts", return_value={"created": 0, "updated": 0, "errors": 0}):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", "--realm-id", "realm-a", stdout=StringIO())
 

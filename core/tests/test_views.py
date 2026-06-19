@@ -174,7 +174,8 @@ class SyncCommandTests(TestCase):
         with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
-             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw), \
+             mock.patch.object(qb_client, "sync_accounts", return_value={"created": 0, "updated": 0, "errors": 0}):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", "--realm-id", "123145", stdout=out)
 
@@ -196,7 +197,8 @@ class SyncCommandTests(TestCase):
         with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
-             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw), \
+             mock.patch.object(qb_client, "sync_accounts", return_value={"created": 0, "updated": 0, "errors": 0}):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
             self.assertEqual(Transaction.objects.count(), 1)
@@ -215,13 +217,39 @@ class SyncCommandTests(TestCase):
         with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "fetch_company_name", return_value="Demo Co"), \
-             mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw), \
+             mock.patch.object(qb_client, "sync_accounts", return_value={"created": 0, "updated": 0, "errors": 0}):
             mock_build.return_value = mock.MagicMock()
             call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
 
         self.assertEqual(Transaction.objects.filter(realm_id="123145").count(), 1)
         company = QuickBooksCompany.objects.get(realm_id="123145")
         self.assertEqual(company.name, "Demo Co")
+
+    def test_sync_command_prints_new_source_counts(self) -> None:
+        from core.models import Transaction
+
+        token = mock.MagicMock(realm_id="123145")
+        raw = {
+            "Purchase": [],
+            "Deposit": [],
+            "JournalEntry": [],
+            "Bill": [SimpleNamespace_bill()],
+            "BillPayment": [],
+            "VendorCredit": [],
+        }
+        out = StringIO()
+        with mock.patch.object(qb_tokens, "get_active_token", return_value=token), \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "fetch_company_name", return_value=""), \
+             mock.patch.object(qb_client, "pull_raw_records", return_value=raw), \
+             mock.patch.object(qb_client, "sync_accounts", return_value={"created": 0, "updated": 0, "errors": 0}):
+            mock_build.return_value = mock.MagicMock()
+            call_command("sync_quickbooks", "--realm-id", "123145", stdout=out)
+
+        output = out.getvalue()
+        self.assertIn("Bill: created=1", output)
+        self.assertEqual(Transaction.objects.filter(source_type="Bill").count(), 1)
 
 
 def SimpleNamespace_purchase() -> object:
@@ -234,6 +262,20 @@ def SimpleNamespace_purchase() -> object:
         Id="cmd-1", TxnDate="2026-05-09", TotalAmt="42.00",
         EntityRef=ref("Vendor Co"), AccountRef=ref("Checking"),
         qbo_object_name="Purchase",
+    )
+
+
+def SimpleNamespace_bill() -> object:
+    from types import SimpleNamespace
+
+    def ref(name=""):
+        return SimpleNamespace(name=name, value="")
+
+    return SimpleNamespace(
+        Id="cmd-bill-1", TxnDate="2026-05-10", TotalAmt="250.00",
+        VendorRef=ref("Utility Co"), APAccountRef=ref("Accounts Payable"),
+        Line=[SimpleNamespace(Amount="250.00", AccountRef=ref("Utilities"))],
+        qbo_object_name="Bill",
     )
 
 

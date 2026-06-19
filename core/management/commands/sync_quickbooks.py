@@ -18,8 +18,9 @@ from core.quickbooks import tokens as qb_tokens
 
 class Command(BaseCommand):
     help = (
-        "Pull Purchase/Deposit/JournalEntry records from QuickBooks and normalize "
-        "them into Transaction rows (idempotent on realm_id + qb_transaction_id). "
+        "Pull Purchase/Deposit/JournalEntry/Bill/BillPayment/VendorCredit records "
+        "from QuickBooks and normalize them into Transaction rows (idempotent on "
+        "realm_id + qb_transaction_id). Syncs the chart of accounts into QBAccount. "
         "Handles token expiry and transient API errors automatically."
     )
 
@@ -27,6 +28,16 @@ class Command(BaseCommand):
         parser.add_argument(
             "--realm-id",
             help="QuickBooks realm id to sync. If omitted, syncs all connected companies.",
+        )
+        parser.add_argument(
+            "--skip-accounts",
+            action="store_true",
+            help="Skip syncing the chart of accounts (QBAccount).",
+        )
+        parser.add_argument(
+            "--skip-reports",
+            action="store_true",
+            help="Skip fetching report summaries (currently unused; reserved for future report sync).",
         )
 
     def handle(self, *args, **options) -> None:
@@ -81,6 +92,20 @@ class Command(BaseCommand):
                 )
             total_created += result["created"]
             total_skipped += result["skipped"]
+
+            if not options.get("skip_accounts"):
+                account_result = qb_client.sync_accounts(qb, qb_token=token, realm_id=token.realm_id)
+                if account_result.get("errors"):
+                    self.stdout.write(self.style.ERROR(
+                        f"Account sync failed for {token.realm_id}: "
+                        f"{account_result.get('error_message', 'unknown error')}"
+                    ))
+                    total_errors += 1
+                else:
+                    self.stdout.write(
+                        f"  Accounts: created={account_result['created']} "
+                        f"updated={account_result['updated']}"
+                    )
 
         if total_errors:
             raise CommandError(

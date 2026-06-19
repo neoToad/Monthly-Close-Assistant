@@ -21,6 +21,7 @@ from unittest import mock
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
+from core.models import QBAccount, Transaction
 from core.quickbooks import client as qb_client
 from core.quickbooks.tokens import decrypt_value, encrypt_value, store_tokens
 
@@ -66,6 +67,52 @@ def _journal_entry(*, id_: str = "3", date: str = "2026-05-12", amount="75.00",
         TotalAmt=amount,
         Line=[line],
         qbo_object_name="JournalEntry",
+    )
+
+
+def _bill(*, id_: str = "4", date: str = "2026-05-13", amount="250.00",
+          vendor="Utility Co", expense_account="Utilities", ap_account="Accounts Payable") -> SimpleNamespace:
+    line = SimpleNamespace(
+        Amount=amount,
+        AccountRef=_ref(name=expense_account),
+    )
+    return SimpleNamespace(
+        Id=id_,
+        TxnDate=date,
+        TotalAmt=amount,
+        VendorRef=_ref(name=vendor),
+        APAccountRef=_ref(name=ap_account),
+        Line=[line],
+        qbo_object_name="Bill",
+    )
+
+
+def _bill_payment(*, id_: str = "5", date: str = "2026-05-14", amount="250.00",
+                  vendor="Utility Co", bank_account="Checking") -> SimpleNamespace:
+    return SimpleNamespace(
+        Id=id_,
+        TxnDate=date,
+        TotalAmt=amount,
+        VendorRef=_ref(name=vendor),
+        BankAccountRef=_ref(name=bank_account),
+        CreditCardAccountRef=None,
+        qbo_object_name="BillPayment",
+    )
+
+
+def _vendor_credit(*, id_: str = "6", date: str = "2026-05-15", amount="50.00",
+                   vendor="Utility Co", expense_account="Utilities") -> SimpleNamespace:
+    line = SimpleNamespace(
+        Amount=amount,
+        AccountRef=_ref(name=expense_account),
+    )
+    return SimpleNamespace(
+        Id=id_,
+        TxnDate=date,
+        TotalAmt=amount,
+        VendorRef=_ref(name=vendor),
+        Line=[line],
+        qbo_object_name="VendorCredit",
     )
 
 
@@ -189,6 +236,116 @@ class NormalizeRecordTests(SimpleTestCase):
 
     def test_missing_date_is_skipped(self) -> None:
         self.assertIsNone(qb_client.normalize_record(_purchase(date=""), "Purchase"))
+
+
+    def test_bill_maps_vendor_and_first_line_account(self) -> None:
+        norm = qb_client.normalize_record(_bill(), "Bill")
+        self.assertEqual(norm["qb_transaction_id"], "4")
+        self.assertEqual(norm["date"], dt.date(2026, 5, 13))
+        self.assertEqual(norm["amount"], Decimal("250.00"))
+        self.assertEqual(norm["vendor"], "Utility Co")
+        self.assertEqual(norm["gl_account"], "Utilities")
+        self.assertEqual(norm["source_type"], "Bill")
+
+    def test_bill_falls_back_to_ap_account_when_line_empty(self) -> None:
+        bill = _bill(expense_account="")
+        bill.Line = []
+        norm = qb_client.normalize_record(bill, "Bill")
+        self.assertEqual(norm["gl_account"], "Accounts Payable")
+
+    def test_bill_payment_maps_vendor_and_bank_account(self) -> None:
+        norm = qb_client.normalize_record(_bill_payment(), "BillPayment")
+        self.assertEqual(norm["qb_transaction_id"], "5")
+        self.assertEqual(norm["date"], dt.date(2026, 5, 14))
+        self.assertEqual(norm["amount"], Decimal("250.00"))
+        self.assertEqual(norm["vendor"], "Utility Co")
+        self.assertEqual(norm["gl_account"], "Checking")
+        self.assertEqual(norm["source_type"], "BillPayment")
+
+    def test_bill_payment_prefers_credit_card_when_bank_missing(self) -> None:
+        payment = _bill_payment(bank_account="")
+        payment.BankAccountRef = None
+        payment.CreditCardAccountRef = _ref(name="Corporate Card")
+        norm = qb_client.normalize_record(payment, "BillPayment")
+        self.assertEqual(norm["gl_account"], "Corporate Card")
+
+    def test_vendor_credit_maps_vendor_and_first_line_account(self) -> None:
+        norm = qb_client.normalize_record(_vendor_credit(), "VendorCredit")
+        self.assertEqual(norm["qb_transaction_id"], "6")
+        self.assertEqual(norm["date"], dt.date(2026, 5, 15))
+        self.assertEqual(norm["amount"], Decimal("50.00"))
+        self.assertEqual(norm["vendor"], "Utility Co")
+        self.assertEqual(norm["gl_account"], "Utilities")
+        self.assertEqual(norm["source_type"], "VendorCredit")
+
+
+# ---------------------------------------------------------------------------
+# SYNC_OBJECTS registry
+# ---------------------------------------------------------------------------
+
+
+class SyncObjectsRegistryTests(SimpleTestCase):
+    def test_registry_includes_ap_types(self) -> None:
+        self.assertIn("Bill", qb_client.SYNC_OBJECTS)
+        self.assertIn("BillPayment", qb_client.SYNC_OBJECTS)
+        self.assertIn("VendorCredit", qb_client.SYNC_OBJECTS)
+
+
+# ---------------------------------------------------------------------------
+# sync_accounts
+# ---------------------------------------------------------------------------
+
+
+class SyncAccountsTests(TestCase):
+    def _qb_account(self, *, account_id="acc-1", name="Checking", account_type="Bank",
+                    account_sub_type="Checking", active=True) -> SimpleNamespace:
+        return SimpleNamespace(
+            Id=account_id,
+            Name=name,
+            AccountType=account_type,
+            AccountSubType=account_sub_type,
+            Active=active,
+        )
+
+    @mock.patch.object(qb_client.Account, "all")
+    def test_upserts_accounts_by_realm_and_account_id(self, mock_all) -> None:
+        mock_all.return_value = [
+            self._qb_account(account_id="acc-1", name="Checking"),
+            self._qb_account(account_id="acc-2", name="Supplies", account_type="Expense"),
+        ]
+        result = qb_client.sync_accounts(mock.MagicMock(), realm_id="realm-a")
+
+        self.assertEqual(result["created"], 2)
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(QBAccount.objects.filter(realm_id="realm-a").count(), 2)
+        checking = QBAccount.objects.get(realm_id="realm-a", account_id="acc-1")
+        self.assertEqual(checking.name, "Checking")
+        self.assertEqual(checking.account_type, "Bank")
+
+    @mock.patch.object(qb_client.Account, "all")
+    def test_updates_existing_account(self, mock_all) -> None:
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="acc-1", name="Old Name", account_type="Bank"
+        )
+
+        mock_all.return_value = [
+            self._qb_account(account_id="acc-1", name="Checking", account_type="Bank")
+        ]
+        result = qb_client.sync_accounts(mock.MagicMock(), realm_id="realm-a")
+
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["updated"], 1)
+        checking = QBAccount.objects.get(realm_id="realm-a", account_id="acc-1")
+        self.assertEqual(checking.name, "Checking")
+
+    @mock.patch.object(qb_client, "call_with_retry")
+    def test_api_failure_reports_error(self, mock_call) -> None:
+        mock_call.side_effect = Exception("API down")
+        result = qb_client.sync_accounts(mock.MagicMock(), realm_id="realm-a")
+
+        self.assertEqual(result["errors"], 1)
+        self.assertIn("API down", result.get("error_message", ""))
+        self.assertEqual(QBAccount.objects.count(), 0)
 
 
 # ---------------------------------------------------------------------------

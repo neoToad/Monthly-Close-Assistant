@@ -12,6 +12,19 @@ commit, per the AGENTS.md workflow.
   `QBAccount` in the Django admin.
 - Added model tests for new `SourceType` choices and `QBAccount` constraints.
 
+## feat(qb): sync Bills, BillPayments, VendorCredits, and Accounts
+
+- Imported `Bill`, `BillPayment`, `VendorCredit`, and `Account` from python-quickbooks.
+- Extended `SYNC_OBJECTS` with `Bill`, `BillPayment`, and `VendorCredit`.
+- Extended `normalize_record()` to map vendor and GL account fields for the three
+  new AP/cash-out record types.
+- Added `sync_accounts()` helper that upserts `QBAccount` rows keyed on
+  `(realm_id, account_id)` via `Account.all()`.
+- Wired `sync_accounts()` into the `sync_quickbooks` command after transaction sync,
+  with `--skip-accounts` and `--skip-reports` flags for faster syncs.
+- Updated command output to print per-type counts for all transaction source types.
+- Added tests for new normalization paths, `sync_accounts`, and sync command output.
+
 ## feat(qb): fetch and store QuickBooks company names
 
 - Added `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`

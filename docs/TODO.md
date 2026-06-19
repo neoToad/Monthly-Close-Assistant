@@ -26,10 +26,10 @@
 
 ## Add QuickBooks data sources
 
-- [ ] Add `Bill`, `BillPayment`, `VendorCredit` to `SourceType` and `QBAccount` model
-- [ ] Extend `SYNC_OBJECTS` and `normalize_record` for the three AP types
-- [ ] Add `sync_accounts` helper and wire into `sync_quickbooks`
-- [ ] Print per-type counts for new transaction sources
+- [x] Add `Bill`, `BillPayment`, `VendorCredit` to `SourceType` and `QBAccount` model
+- [x] Extend `SYNC_OBJECTS` and `normalize_record` for the three AP types
+- [x] Add `sync_accounts` helper and wire into `sync_quickbooks`
+- [x] Print per-type counts for new transaction sources
 - [ ] Add normalization, account sync, and sync-command tests
 - [ ] Add realm-isolation tests for `QBAccount`
 - [ ] Scope bank feed to cash-like transaction types with `--cash-only`
