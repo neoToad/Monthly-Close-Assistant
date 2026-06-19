@@ -500,6 +500,53 @@ class DashboardActionViewTests(TestCase):
         self.assertContains(resp, "Close summary drafted")
         self.assertEqual(CloseSummary.objects.filter(month="2025-01").count(), 1)
 
+    def test_set_bank_balance_view_is_idempotent(self) -> None:
+        from core.models import BankStatementBalance, QBAccount, QuickBooksCompany
+
+        company = QuickBooksCompany.objects.for_realm("realm-a")
+        QBAccount.objects.create(
+            company=company,
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Operating Checking",
+            account_type="Bank",
+        )
+
+        self.client.post(
+            "/dashboard/balance/set/",
+            {
+                "month": "2026-06",
+                "realm_id": "realm-a",
+                "qb_account_id": "qb-acc-1",
+                "ending_balance": "-1000.00",
+            },
+        )
+        first = BankStatementBalance.objects.get(
+            realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+        )
+
+        self.client.post(
+            "/dashboard/balance/set/",
+            {
+                "month": "2026-06",
+                "realm_id": "realm-a",
+                "qb_account_id": "qb-acc-1",
+                "ending_balance": "-3621.93",
+            },
+        )
+        second = BankStatementBalance.objects.get(
+            realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+        )
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(
+            BankStatementBalance.objects.filter(
+                realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+            ).count(),
+            1,
+        )
+        self.assertEqual(second.ending_balance, Decimal("-3621.93"))
+
 
 class ReconcileAccountViewTests(TestCase):
     def setUp(self) -> None:

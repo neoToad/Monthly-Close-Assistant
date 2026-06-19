@@ -56,8 +56,8 @@
 - ✅ Type hints and docstrings pass (2.4).
 - ✅ Extract `compute_posted_total` and grouped queries (2.1.B, 2.8.A).
 - ✅ Extract service layer for apply flow (2.1.A).
-- ⬜ Move QB write helpers to `core/services/qb_writes.py` (2.1.C).
-- ⬜ Centralize retry/backoff (2.5.A).
-- ⬜ Add missing idempotency tests (2.6).
+- ✅ Move QB write helpers to `core/services/qb_writes.py` (2.1.C).
+- ✅ Centralize retry/backoff (2.5.A).
+- ✅ Add missing idempotency tests (2.6).
 - ⬜ Package reorganization (2.2.A full target).
 - ⬜ Migration squash (2.8.E).

@@ -3,6 +3,50 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## test(services): add missing idempotency tests (refactor plan 2.6)
+
+- Added `test_dry_run_is_idempotent` and `test_apply_is_idempotent_via_applied_suggestions`
+  to `core/tests/test_services.py`; the apply test verifies that
+  `apply_account_reconciliation_suggestions` skips suggestions already recorded in
+  `AccountReconciliationState.applied_suggestions` and reports them as already applied.
+- Added `test_set_bank_balance_is_idempotent` and `test_seed_without_force_is_idempotent`
+  to `core/tests/test_management.py`, asserting single rows with stable/latest values.
+- Added `test_force_with_seed_is_idempotent` for `generate_bank_feed`, asserting identical
+  counts and amounts across two forced runs with the same seed (new row ids expected).
+- Added `test_set_bank_balance_view_is_idempotent` to `core/tests/test_views.py`.
+- Full core test suite passes **290 tests**.
+
+## feat(services): centralize retry/backoff in `core/services/retry` (refactor plan 2.5.A)
+
+- Added `core/services/retry.py` with a generic `with_retry` helper supporting
+  configurable exceptions, exponential backoff with optional jitter, max sleep cap,
+  and an optional `on_retry` callback.
+- Wrapped `.save()` calls in `core/services/qb_writes.py` with `with_retry` for
+  `QuickbooksException`, `ConnectionError`, and `TimeoutError`.
+- Wrapped LLM `.invoke()` calls in `core/agent/reconcile.py` and `core/agent/summary.py`
+  with `with_retry` for transient provider failures.
+- Added `core/tests/test_retry.py` covering first-attempt success, recovery after
+  transient failures, exhaustion, non-retryable exceptions, and callback invocation.
+
+## refactor(services): move QB write helpers to `core/services/qb_writes` (refactor plan 2.1.C)
+
+- Moved `apply_suggestion`, `create_journal_entry`, `create_purchase`, `create_deposit`,
+  and account-ref helpers from `core/quickbooks/writes.py` to the new
+  `core/services/qb_writes.py` module.
+- Updated `core/services/reconciliation.py` and
+  `core/management/commands/suggest_account_fixes.py` to import from the new location;
+  removed the now-empty `core/quickbooks/writes.py` module.
+- Refactored `core/agent/reconcile.py` and `core/agent/summary.py` so the agent layer
+  no longer imports `core.quickbooks.client`. Live QB data (`qb_current_balance`,
+  `qb_gl_totals`) is now fetched by callers and passed in as plain inputs.
+- Updated `core/views.py` to fetch current balances for the reconcile-account modal and
+  pass them to the agent as `qb_current_balance`.
+- Updated all affected tests to patch the new `core.services.qb_writes.apply_suggestion`
+  path and to pass `qb_gl_totals` directly to `gather_inputs`.
+- Added `core/tests/test_architecture.py` with `AgentLayerBoundaryTests` enforcing that
+  `core.agent` modules never import from `core.services.qb_writes` or
+  `core.quickbooks.client`.
+
 ## refactor(dead-code): remove unused helpers and scaffolding (refactor plan 2.7.A–F)
 
 - Removed unused `refresh_tokens` function from `core/quickbooks/client.py` and the

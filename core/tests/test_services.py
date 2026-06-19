@@ -116,3 +116,92 @@ class ApplyAccountReconciliationServiceTests(TestCase):
         )
         self.assertIn("sug-1", state.applied_suggestions)
         self.assertEqual(state.status, ReconciliationStatus.IN_PROGRESS)
+
+    def test_dry_run_is_idempotent(self) -> None:
+        from core.models import AccountReconciliationState
+
+        _make_bank_balance(ending_balance=Decimal("-100.00"))
+        _make_bank_txn(amount=Decimal("-25.00"))
+
+        result1 = apply_account_reconciliation_suggestions(
+            month="2026-06",
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            suggestion_ids=["sug-1"],
+            dry_run=True,
+        )
+        state1 = AccountReconciliationState.objects.get(
+            company__realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+        )
+
+        result2 = apply_account_reconciliation_suggestions(
+            month="2026-06",
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            suggestion_ids=["sug-1"],
+            dry_run=True,
+        )
+        state2 = AccountReconciliationState.objects.get(
+            company__realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+        )
+
+        self.assertTrue(result1["success"])
+        self.assertTrue(result2["success"])
+        self.assertEqual(state1.id, state2.id)
+        self.assertEqual(state1.status, state2.status)
+        self.assertEqual(
+            len(state1.last_suggestions["suggestions"]),
+            len(state2.last_suggestions["suggestions"]),
+        )
+
+    def test_apply_is_idempotent_via_applied_suggestions(self) -> None:
+        from core.models import AccountReconciliationState
+
+        _make_bank_balance(ending_balance=Decimal("-100.00"))
+        _make_bank_txn(amount=Decimal("-25.00"))
+        token = mock.MagicMock(realm_id="realm-a")
+
+        with mock.patch(
+            "core.services.reconciliation.qb_tokens.get_active_token", return_value=token
+        ), mock.patch(
+            "core.services.reconciliation.qb_client.build_quickbooks_client"
+        ) as mock_build, mock.patch(
+            "core.services.reconciliation.qb_client.sync_transactions"
+        ) as mock_sync, mock.patch(
+            "core.services.reconciliation.qb_writes.apply_suggestion",
+            return_value={"object_type": "JournalEntry", "id": "je-1", "amount": "25.00"},
+        ) as mock_apply:
+            result1 = apply_account_reconciliation_suggestions(
+                month="2026-06",
+                realm_id="realm-a",
+                qb_account_id="qb-acc-1",
+                suggestion_ids=["sug-1"],
+                dry_run=False,
+            )
+            self.assertTrue(result1["success"])
+            self.assertEqual(len(result1["created_objects"]), 1)
+            first_call_count = mock_apply.call_count
+
+            result2 = apply_account_reconciliation_suggestions(
+                month="2026-06",
+                realm_id="realm-a",
+                qb_account_id="qb-acc-1",
+                suggestion_ids=["sug-1"],
+                dry_run=False,
+            )
+
+        self.assertTrue(result2["success"])
+        self.assertEqual(mock_apply.call_count, first_call_count)
+        self.assertEqual(len(result2["created_objects"]), 0)
+        self.assertIn("already applied", result2["notice"])
+
+        state = AccountReconciliationState.objects.get(
+            company__realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+        )
+        self.assertEqual(state.applied_suggestions.count("sug-1"), 1)

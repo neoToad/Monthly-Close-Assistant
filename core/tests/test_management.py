@@ -140,6 +140,37 @@ class SetBankBalanceCommandTests(TestCase):
                 "--balance", "-3621.93",
             )
 
+    def test_set_bank_balance_is_idempotent(self) -> None:
+        call_command(
+            "set_bank_balance",
+            "2026-06",
+            "--realm-id", "realm-a",
+            "--account-id", "qb-acc-1",
+            "--balance", "-1000.00",
+            "--name", "Operating Checking",
+        )
+        first = BankStatementBalance.objects.get(
+            realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+        )
+
+        call_command(
+            "set_bank_balance",
+            "2026-06",
+            "--realm-id", "realm-a",
+            "--account-id", "qb-acc-1",
+            "--balance", "-3621.93",
+            "--name", "Operating Checking",
+        )
+        second = BankStatementBalance.objects.get(
+            realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+        )
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(BankStatementBalance.objects.filter(
+            realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+        ).count(), 1)
+        self.assertEqual(second.ending_balance, Decimal("-3621.93"))
+
 
 class SeedBankBalancesCommandTests(TestCase):
     def _fake_token(self, realm_id: str = "realm-a"):
@@ -207,6 +238,37 @@ class SeedBankBalancesCommandTests(TestCase):
         balance = BankStatementBalance.objects.get(realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06")
         self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
         self.assertEqual(balance.source, "qb_api")
+
+    def test_seed_without_force_is_idempotent(self) -> None:
+        from core.quickbooks import client as qb_client
+        from core.quickbooks import tokens as qb_tokens
+
+        _make_qb_account(
+            account_id="qb-acc-1", name="Operating Checking", account_type="Bank"
+        )
+        _make_bank_balance(
+            account_name="Old Name",
+            ending_balance=Decimal("-1000.00"),
+        )
+
+        with mock.patch.object(
+            qb_tokens, "get_active_token", return_value=self._fake_token("realm-a"),
+        ):
+            with mock.patch.object(qb_client, "build_quickbooks_client"):
+                with mock.patch.object(
+                    qb_client, "fetch_account_current_balances",
+                    return_value={
+                        "qb-acc-1": {"name": "Operating Checking", "balance": Decimal("-3621.93"), "account_type": "Bank"},
+                    },
+                ):
+                    call_command("seed_bank_balances", "2026-06", "--realm-id", "realm-a")
+                    call_command("seed_bank_balances", "2026-06", "--realm-id", "realm-a")
+
+        balances = BankStatementBalance.objects.filter(
+            realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06"
+        )
+        self.assertEqual(balances.count(), 1)
+        self.assertEqual(balances.first().ending_balance, Decimal("-3621.93"))
 
 
 class GenerateBankFeedCommandTests(TestCase):
@@ -313,6 +375,48 @@ class GenerateBankFeedCommandTests(TestCase):
         _make_txn(qb_transaction_id="QB-Feb", date=dt.date(2025, 2, 10))
         call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a")
         self.assertEqual(BankTransaction.objects.filter(date__month=2).count(), 0)
+
+    def test_force_with_seed_is_idempotent(self) -> None:
+        for i in range(5):
+            _make_txn(
+                qb_transaction_id=f"QB-{i}",
+                date=dt.date(2025, 1, 10 + i),
+                amount=Decimal("100.00") + i,
+            )
+
+        call_command(
+            "generate_bank_feed",
+            "2025-01",
+            "--realm-id", "realm-a",
+            "--force",
+            "--seed", "123",
+        )
+        first_count = BankTransaction.objects.count()
+        first_ids = list(
+            BankTransaction.objects.order_by("id").values_list("id", flat=True)
+        )
+        first_amounts = list(
+            BankTransaction.objects.order_by("id").values_list("amount", flat=True)
+        )
+
+        call_command(
+            "generate_bank_feed",
+            "2025-01",
+            "--realm-id", "realm-a",
+            "--force",
+            "--seed", "123",
+        )
+        second_count = BankTransaction.objects.count()
+        second_ids = list(
+            BankTransaction.objects.order_by("id").values_list("id", flat=True)
+        )
+        second_amounts = list(
+            BankTransaction.objects.order_by("id").values_list("amount", flat=True)
+        )
+
+        self.assertEqual(first_count, second_count)
+        self.assertEqual(first_amounts, second_amounts)
+        self.assertNotEqual(first_ids, second_ids)
 
 
 class RunReconciliationCommandTests(TestCase):
