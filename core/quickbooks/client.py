@@ -9,7 +9,6 @@ Environment (all read via ``decouple.config`` from ``.env``):
 
 * ``QB_CLIENT_ID`` / ``QB_CLIENT_SECRET`` — the Intuit app credentials.
 * ``QB_REDIRECT_URI`` — the OAuth callback URL registered with Intuit.
-* ``QB_SANDBOX_COMPANY_ID`` — the sandbox realm id used as the default company.
 
 The Intuit ``environment`` is hardcoded to ``"sandbox"`` for now; ``QB_ENVIRONMENT``
 is formalized in Prompt 4. Retry/backoff is deferred to Prompt 5.
@@ -350,15 +349,20 @@ def normalize_record(record: Any, source_type: str) -> Optional[dict]:
     }
 
 
-def sync_transactions(qb_client: QuickBooks, qb_token: Optional[Any] = None) -> dict:
+def sync_transactions(
+    qb_client: QuickBooks,
+    qb_token: Optional[Any] = None,
+    realm_id: Optional[str] = None,
+) -> dict:
     """Pull QuickBooks records and upsert them into ``Transaction`` (idempotent).
 
-    Idempotency is keyed on ``qb_transaction_id``: existing rows are skipped (not
-    overwritten). ``qb_token`` is passed through to ``pull_raw_records`` so auth
-    expiry and transient API errors are retried automatically (Prompt 5). Returns
-    a counts summary, or one with ``errors=1`` and ``error_message`` when the API
-    calls ultimately fail.
+    Idempotency is keyed on ``(realm_id, qb_transaction_id)``: existing rows are
+    skipped (not overwritten). ``qb_token`` is passed through to ``pull_raw_records``
+    so auth expiry and transient API errors are retried automatically (Prompt 5).
+    Returns a counts summary, or one with ``errors=1`` and ``error_message`` when the
+    API calls ultimately fail.
     """
+    realm_id = realm_id or getattr(qb_token, "realm_id", None) or ""
     try:
         raw = pull_raw_records(qb_client, qb_token=qb_token)
     except Exception as exc:  # noqa: BLE001 — final API failure is reported, not crashed
@@ -381,9 +385,14 @@ def sync_transactions(qb_client: QuickBooks, qb_token: Optional[Any] = None) -> 
                 skipped += 1
                 per_type[source_type]["skipped"] += 1
                 continue
-            defaults = {k: v for k, v in normalized.items() if k != "qb_transaction_id"}
+            defaults = {
+                k: v for k, v in normalized.items() if k != "qb_transaction_id"
+            }
+            defaults["realm_id"] = realm_id
             _obj, was_created = Transaction.objects.get_or_create(
-                qb_transaction_id=normalized["qb_transaction_id"], defaults=defaults
+                realm_id=realm_id,
+                qb_transaction_id=normalized["qb_transaction_id"],
+                defaults=defaults,
             )
             if was_created:
                 created += 1

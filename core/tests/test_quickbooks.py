@@ -22,7 +22,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from core.quickbooks import client as qb_client
-from core.quickbooks.tokens import decrypt_value, encrypt_value
+from core.quickbooks.tokens import decrypt_value, encrypt_value, store_tokens
 
 
 def _ref(name: str = "", value: str = "") -> SimpleNamespace:
@@ -101,6 +101,28 @@ class TokenEncryptionTests(SimpleTestCase):
             self.assertNotEqual(encrypt_value("one"), encrypt_value("two"))
 
 
+class StoreTokensTests(TestCase):
+    def test_stores_tokens_and_creates_quickbooks_company(self) -> None:
+        from core.models import QBToken, QuickBooksCompany
+
+        auth_client = SimpleNamespace(
+            access_token="at",
+            refresh_token="rt",
+            expires_in=3600,
+            x_refresh_token_expires_in=8700000,
+            realm_id="12345",
+        )
+        token = store_tokens(auth_client, realm_id="12345")
+
+        self.assertEqual(token.realm_id, "12345")
+        self.assertEqual(token.get_access_token(), "at")
+        self.assertTrue(
+            QuickBooksCompany.objects.filter(realm_id="12345").exists()
+        )
+        company = QuickBooksCompany.objects.get(realm_id="12345")
+        self.assertTrue(company.is_connected)
+
+
 # ---------------------------------------------------------------------------
 # normalize_record
 # ---------------------------------------------------------------------------
@@ -152,11 +174,11 @@ class SyncTransactionsTests(TestCase):
         }
 
     @mock.patch.object(qb_client, "pull_raw_records")
-    def test_creates_new_transactions(self, mock_pull) -> None:
+    def test_creates_new_transactions_tagged_with_realm(self, mock_pull) -> None:
         from core.models import Transaction
 
         mock_pull.return_value = self._raw()
-        result = qb_client.sync_transactions(qb_client=object())
+        result = qb_client.sync_transactions(qb_client=object(), realm_id="realm-a")
         # 3 valid records (Purchase x1, Deposit x1, JournalEntry x1) created;
         # 1 invalid (empty date) skipped.
         self.assertEqual(result["created"], 3)
@@ -166,14 +188,17 @@ class SyncTransactionsTests(TestCase):
         self.assertEqual(result["per_type"]["Deposit"]["created"], 1)
         self.assertEqual(result["per_type"]["JournalEntry"]["created"], 1)
         self.assertEqual(Transaction.objects.count(), 3)
+        self.assertTrue(
+            Transaction.objects.filter(realm_id="realm-a").count() == 3
+        )
 
     @mock.patch.object(qb_client, "pull_raw_records")
     def test_second_run_is_idempotent(self, mock_pull) -> None:
         from core.models import Transaction
 
         mock_pull.return_value = self._raw()
-        qb_client.sync_transactions(qb_client=object())
-        second = qb_client.sync_transactions(qb_client=object())
+        qb_client.sync_transactions(qb_client=object(), realm_id="realm-a")
+        second = qb_client.sync_transactions(qb_client=object(), realm_id="realm-a")
         # The 3 previously-created records are skipped; the 1 invalid record is
         # skipped again; nothing new is created. DB unchanged.
         self.assertEqual(second["created"], 0)

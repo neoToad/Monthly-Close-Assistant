@@ -23,6 +23,7 @@ def _make_txn(**overrides) -> Transaction:
         category="Office Supplies",
         gl_account="5000 - Supplies",
         qb_transaction_id="QB-1",
+        realm_id="realm-a",
     )
     defaults.update(overrides)
     return Transaction.objects.create(**defaults)
@@ -49,6 +50,7 @@ class GatherInputsTests(TestCase):
             transaction=txn,
             reason="Amount mismatch",
             severity=Severity.HIGH,
+            realm_id=txn.realm_id,
         )
         Flag.objects.create(
             flag_type=FlagType.ANOMALY,
@@ -56,6 +58,7 @@ class GatherInputsTests(TestCase):
             reason="Duplicate",
             severity=Severity.MEDIUM,
             status="rejected",
+            realm_id=txn.realm_id,
         )
         inputs = gather_inputs("2025-01")
         reasons = [f["reason"] for f in inputs["open_flags"]]
@@ -65,11 +68,20 @@ class GatherInputsTests(TestCase):
 
 class DraftCloseSummaryTests(TestCase):
     def test_creates_draft_summary_without_api_key(self) -> None:
-        """With no ANTHROPIC_API_KEY, the agent falls back to a deterministic summary."""
+        """With no API key configured, the agent falls back to a deterministic summary."""
         from core.agent.summary import draft_close_summary
 
         _make_txn(qb_transaction_id="QB-1", category="Software", amount=Decimal("250.00"))
-        summary = draft_close_summary("2025-01")
+        config_values = {
+            "CLOSE_SUMMARY_PROVIDER": "anthropic",
+            "ANTHROPIC_API_KEY": "",
+            "OPENAI_API_KEY": "",
+        }
+        with mock.patch(
+            "core.agent.summary.config",
+            side_effect=lambda key, default="": config_values.get(key, default),
+        ):
+            summary = draft_close_summary("2025-01")
         self.assertEqual(summary.month, "2025-01")
         self.assertEqual(summary.status, CloseSummaryStatus.DRAFT)
         self.assertIn("2025-01", summary.summary_text)
@@ -100,8 +112,16 @@ class LLMProviderSelectionTests(TestCase):
     def test_anthropic_path_used_by_default(self) -> None:
         from core.agent.summary import _call_llm
 
+        config_values = {
+            "CLOSE_SUMMARY_PROVIDER": "anthropic",
+            "CLOSE_SUMMARY_MODEL": "claude-sonnet-4-6",
+        }
         with mock.patch("core.agent.summary._call_anthropic_llm") as mock_anthropic, \
-             mock.patch("core.agent.summary._call_openai_llm") as mock_openai:
+             mock.patch("core.agent.summary._call_openai_llm") as mock_openai, \
+             mock.patch(
+                 "core.agent.summary.config",
+                 side_effect=lambda key, default="": config_values.get(key, default),
+             ):
             mock_anthropic.return_value = "anthropic summary"
             result = _call_llm("test prompt")
 

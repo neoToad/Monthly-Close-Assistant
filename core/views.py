@@ -26,7 +26,14 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from core.agent.summary import draft_close_summary
 from core.anomaly.rules import run_anomaly_detection
-from core.models import CloseSummary, CloseSummaryStatus, Flag, FlagStatus, Transaction
+from core.models import (
+    CloseSummary,
+    CloseSummaryStatus,
+    Flag,
+    FlagStatus,
+    QuickBooksCompany,
+    Transaction,
+)
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
 from core.reconciliation.engine import run_reconciliation
@@ -88,20 +95,26 @@ def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
     return first, last
 
 
-def _available_months() -> list[str]:
+def _available_months(realm_id: Optional[str] = None) -> list[str]:
     """Distinct months that have at least one transaction, newest first."""
-    dates = Transaction.objects.dates("date", "month", order="DESC")
+    qs = Transaction.objects.all()
+    if realm_id:
+        qs = qs.filter(realm_id=realm_id)
+    dates = qs.dates("date", "month", order="DESC")
     return [f"{d.year}-{d.month:02d}" for d in dates]
 
 
-def _dashboard_context(month: str) -> dict:
-    """Build the dashboard context for ``month``."""
+def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict:
+    """Build the dashboard context for ``month`` and optional ``realm_id``."""
     first, last = _month_bounds(month)
 
-    month_flags = Flag.objects.filter(
-        Q(transaction__date__range=(first, last))
-        | Q(bank_transaction__date__range=(first, last))
+    flag_filters = Q(transaction__date__range=(first, last)) | Q(
+        bank_transaction__date__range=(first, last)
     )
+    if realm_id:
+        flag_filters &= Q(realm_id=realm_id)
+
+    month_flags = Flag.objects.filter(flag_filters)
 
     flags = month_flags.filter(status=FlagStatus.OPEN).select_related(
         "transaction", "bank_transaction"
@@ -113,14 +126,22 @@ def _dashboard_context(month: str) -> dict:
         "rejected": month_flags.filter(status=FlagStatus.REJECTED).count(),
     }
 
-    summary = CloseSummary.objects.filter(month=month).first()
-    months = _available_months()
+    summary_qs = CloseSummary.objects.filter(month=month)
+    if realm_id:
+        summary_qs = summary_qs.filter(realm_id=realm_id)
+    summary = summary_qs.first()
 
-    has_data = Transaction.objects.filter(date__range=(first, last)).exists()
+    months = _available_months(realm_id=realm_id)
+
+    txn_qs = Transaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        txn_qs = txn_qs.filter(realm_id=realm_id)
+    has_data = txn_qs.exists()
 
     return {
         "month": month,
         "months": months,
+        "realm_id": realm_id,
         "flags": flags,
         "flag_counts": flag_counts,
         "summary": summary,
@@ -128,10 +149,19 @@ def _dashboard_context(month: str) -> dict:
     }
 
 
-def _render_dashboard(request, month: str, notice: str = ""):
-    """Render the dashboard (full page or HTMX partial) for ``month``."""
-    context = _dashboard_context(month)
+def _default_realm_id() -> Optional[str]:
+    """Return the most recently connected realm id, or None when no token exists."""
+    token = qb_tokens.get_active_token()
+    return token.realm_id if token else None
+
+
+def _render_dashboard(
+    request, month: str, realm_id: Optional[str] = None, notice: str = ""
+):
+    """Render the dashboard (full page or HTMX partial) for ``month`` and ``realm_id``."""
+    context = _dashboard_context(month, realm_id=realm_id)
     context["notice"] = notice
+    context["companies"] = QuickBooksCompany.objects.filter(is_connected=True)
     template = (
         "core/dashboard_content.html"
         if getattr(request, "htmx", False)
@@ -143,10 +173,11 @@ def _render_dashboard(request, month: str, notice: str = ""):
 @login_required
 @require_http_methods(["GET"])
 def dashboard(request):
-    """Render the monthly close review dashboard for a selected month."""
+    """Render the monthly close review dashboard for a selected company and month."""
+    realm_id = request.GET.get("company") or _default_realm_id()
     month = request.GET.get("month")
     if not month:
-        months = _available_months()
+        months = _available_months(realm_id=realm_id)
         month = months[0] if months else dt.date.today().strftime("%Y-%m")
 
     try:
@@ -154,7 +185,7 @@ def dashboard(request):
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
-    return _render_dashboard(request, month)
+    return _render_dashboard(request, month, realm_id=realm_id)
 
 
 @login_required
@@ -162,8 +193,9 @@ def dashboard(request):
 def qb_sync_now(request):
     """Pull the latest QuickBooks transactions and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = request.POST.get("realm_id")
 
-    token = qb_tokens.get_active_token()
+    token = qb_tokens.get_active_token(realm_id=realm_id)
     if token is None:
         return _render_dashboard(
             request,
@@ -173,7 +205,7 @@ def qb_sync_now(request):
 
     try:
         qb = qb_client.build_quickbooks_client(token)
-        result = qb_client.sync_transactions(qb, qb_token=token)
+        result = qb_client.sync_transactions(qb, qb_token=token, realm_id=token.realm_id)
     except Exception as exc:  # noqa: BLE001
         return _render_dashboard(
             request,
@@ -200,19 +232,20 @@ def qb_sync_now(request):
 def reconcile_month(request):
     """Run reconciliation + anomaly detection for a month and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = request.POST.get("realm_id")
 
     try:
         _month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
-    rec = run_reconciliation(month)
-    anomaly = run_anomaly_detection(month)
+    rec = run_reconciliation(month, realm_id=realm_id)
+    anomaly = run_anomaly_detection(month, realm_id=realm_id)
 
     rec_flags = rec.get("flags_created", 0)
     anomaly_flags = anomaly.get("anomaly_flags_created", 0)
     notice = f"Reconciliation complete: {rec_flags} reconciliation flag(s), {anomaly_flags} anomaly flag(s)."
-    return _render_dashboard(request, month, notice=notice)
+    return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
 
 
 @login_required
@@ -220,6 +253,7 @@ def reconcile_month(request):
 def draft_summary(request):
     """Draft (or re-draft) a close summary for a month and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = request.POST.get("realm_id")
 
     try:
         _month_bounds(month)
@@ -227,16 +261,17 @@ def draft_summary(request):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
     try:
-        summary = draft_close_summary(month)
+        summary = draft_close_summary(month, realm_id=realm_id)
     except Exception as exc:  # noqa: BLE001
         return _render_dashboard(
             request,
             month,
+            realm_id=realm_id,
             notice=f"Close summary draft failed: {exc}",
         )
 
     notice = f"Close summary drafted for {summary.month}."
-    return _render_dashboard(request, month, notice=notice)
+    return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
 
 
 @login_required
@@ -262,8 +297,12 @@ def flag_reject(request, flag_id: int):
 @login_required
 @require_POST
 def summary_review(request, month: str):
-    """Mark a month's close summary as reviewed with optional notes."""
-    summary = get_object_or_404(CloseSummary, month=month)
+    """Mark a company's close summary for ``month`` as reviewed with optional notes."""
+    realm_id = request.POST.get("realm_id")
+    filters = {"month": month}
+    if realm_id:
+        filters["realm_id"] = realm_id
+    summary = get_object_or_404(CloseSummary, **filters)
     summary.status = CloseSummaryStatus.REVIEWED
     summary.reviewer_notes = request.POST.get("reviewer_notes", "")
     summary.save(update_fields=["status", "reviewer_notes"])

@@ -66,12 +66,14 @@ def _prior_month(month: str) -> str:
     return f"{year}-{mon - 1:02d}"
 
 
-def _category_totals(month: str) -> dict[str, Decimal]:
+def _category_totals(month: str, realm_id: Optional[str] = None) -> dict[str, Decimal]:
     """Return {category: total_amount} for ``month`` (empty categories excluded)."""
     first, last = _month_bounds(month)
+    qs = Transaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        qs = qs.filter(realm_id=realm_id)
     qs = (
-        Transaction.objects.filter(date__range=(first, last))
-        .exclude(category="")
+        qs.exclude(category="")
         .values("category")
         .annotate(total=Sum("amount"))
         .order_by("-total")
@@ -79,9 +81,9 @@ def _category_totals(month: str) -> dict[str, Decimal]:
     return {row["category"]: row["total"] for row in qs}
 
 
-def _prior_category_totals(month: str) -> dict[str, Decimal]:
+def _prior_category_totals(month: str, realm_id: Optional[str] = None) -> dict[str, Decimal]:
     prev = _prior_month(month)
-    return _category_totals(prev)
+    return _category_totals(prev, realm_id=realm_id)
 
 
 def _serialize_flag(flag: Flag) -> dict[str, Any]:
@@ -94,10 +96,12 @@ def _serialize_flag(flag: Flag) -> dict[str, Any]:
     }
 
 
-def gather_inputs(month: str) -> dict[str, Any]:
+def gather_inputs(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
     """Collect the inputs the agent needs to draft a close summary."""
     first, last = _month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        txns = txns.filter(realm_id=realm_id)
     total_spend = txns.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
     open_flags = Flag.objects.filter(
@@ -105,18 +109,23 @@ def gather_inputs(month: str) -> dict[str, Any]:
     ).filter(
         Q(transaction__date__range=(first, last))
         | Q(bank_transaction__date__range=(first, last))
-    ).select_related("transaction", "bank_transaction")
+    )
+    if realm_id:
+        open_flags = open_flags.filter(realm_id=realm_id)
+    open_flags = open_flags.select_related("transaction", "bank_transaction")
 
-    prior_total = Transaction.objects.filter(
-        date__range=_month_bounds(_prior_month(month))
-    ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    prior_txns = Transaction.objects.filter(date__range=_month_bounds(_prior_month(month)))
+    if realm_id:
+        prior_txns = prior_txns.filter(realm_id=realm_id)
+    prior_total = prior_txns.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
     return {
         "month": month,
+        "realm_id": realm_id or "",
         "total_spend": total_spend,
         "prior_total_spend": prior_total,
-        "category_totals": _category_totals(month),
-        "prior_category_totals": _prior_category_totals(month),
+        "category_totals": _category_totals(month, realm_id=realm_id),
+        "prior_category_totals": _prior_category_totals(month, realm_id=realm_id),
         "open_flags": [_serialize_flag(f) for f in open_flags],
     }
 
@@ -281,8 +290,10 @@ def _build_graph() -> Any:
 _GRAPH = _build_graph()
 
 
-def draft_close_summary(month: str, llm: Optional[Any] = None) -> CloseSummary:
-    """Draft a close summary for ``month`` and save it as a ``CloseSummary`` draft.
+def draft_close_summary(
+    month: str, realm_id: Optional[str] = None, llm: Optional[Any] = None
+) -> CloseSummary:
+    """Draft a close summary for ``realm_id``/``month`` and save it as a ``CloseSummary`` draft.
 
     ``llm`` is an optional prebuilt LangChain runnable (or any object with an
     ``invoke(prompt)`` method returning an object with a ``.content`` string).
@@ -290,7 +301,7 @@ def draft_close_summary(month: str, llm: Optional[Any] = None) -> CloseSummary:
     and builds a Claude-backed chain; if the key is absent, it falls back to a
     deterministic summary.
     """
-    inputs = gather_inputs(month)
+    inputs = gather_inputs(month, realm_id=realm_id)
     if llm is not None:
         inputs["_llm"] = llm
 
@@ -303,6 +314,7 @@ def draft_close_summary(month: str, llm: Optional[Any] = None) -> CloseSummary:
 
     with transaction.atomic():
         summary, _ = CloseSummary.objects.update_or_create(
+            realm_id=realm_id or "",
             month=month,
             defaults={
                 "summary_text": summary_text,
@@ -310,5 +322,10 @@ def draft_close_summary(month: str, llm: Optional[Any] = None) -> CloseSummary:
             },
         )
 
-    logger.info("draft_close_summary(%s): drafted summary (%s chars)", month, len(summary_text))
+    logger.info(
+        "draft_close_summary(%s, %s): drafted summary (%s chars)",
+        month,
+        realm_id,
+        len(summary_text),
+    )
     return summary

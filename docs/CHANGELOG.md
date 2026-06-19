@@ -4,6 +4,94 @@ All notable changes to the Monthly Close Assistant are recorded here, one entry 
 commit, per the AGENTS.md workflow. Steps track the prompts in
 `docs/Monthly_Close_Assistant_CLI_Agent_Prompts_Full.md`.
 
+---
+
+## Multi-company QuickBooks support — `feat(core,ui): multi-company QuickBooks realm scoping`
+
+Implemented the plan from `docs/plans/multi_company_qb_plan.md` so the assistant can
+connect to and operate against multiple QuickBooks sandbox companies in the same
+database.
+
+- **Schema changes** (`core/models.py`, migration `0003_quickbookscompany_banktransaction_realm_id_and_more`):
+  - Added `realm_id` to `Transaction`, `BankTransaction`, `Flag`, and `CloseSummary`.
+  - Added `QuickBooksCompany` model keyed on `realm_id` to track connected companies.
+  - Replaced the global unique constraint on `Transaction.qb_transaction_id` with
+    `unique_together=("realm_id", "qb_transaction_id")`.
+  - Replaced the global unique constraint on `CloseSummary.month` with
+    `unique_together=("realm_id", "month")`.
+  - Custom migration backfills legacy rows from the most recent `QBToken` before making
+    `realm_id` non-nullable.
+
+- **QuickBooks token/store** (`core/quickbooks/tokens.py`):
+  - `store_tokens()` now creates/updates the matching `QuickBooksCompany` record.
+  - Added `get_active_tokens()` to return all connected realms and kept
+    `get_active_token(realm_id=None)` for targeting one realm.
+
+- **Sync** (`core/quickbooks/client.py`, `core/management/commands/sync_quickbooks.py`):
+  - `sync_transactions(qb_client, qb_token=None, realm_id=None)` tags rows with the
+    realm and keys idempotency on `(realm_id, qb_transaction_id)`.
+  - `sync_quickbooks` syncs all connected companies by default; `--realm-id` syncs a
+    single realm.
+
+- **Reconciliation** (`core/reconciliation/engine.py`):
+  - `run_reconciliation(month, realm_id=None)` loads only the target realm's GL and
+    bank rows, creates flags with the correct `realm_id`, and deletes prior flags scoped
+    to that realm.
+
+- **Anomaly detection** (`core/anomaly/rules.py`):
+  - All rules accept `realm_id` and filter historical baselines and current-month data
+    to the target realm.
+  - `run_anomaly_detection(month, realm_id=None)` deletes and recreates anomaly flags
+    only for the target realm.
+
+- **Close summary** (`core/agent/summary.py`):
+  - `gather_inputs(month, realm_id=None)` and `draft_close_summary(month, realm_id=None)`
+    filter category totals, open flags, and prior-month data to the target realm.
+  - Summaries are saved/updated per `(realm_id, month)`.
+
+- **Bank feed** (`core/bank_feed.py`):
+  - `generate_bank_feed(month, ..., realm_id=None)` filters source transactions and
+    generated bank rows by realm.
+
+- **Management commands**:
+  - Added `--realm-id` to `run_reconciliation`, `generate_close_summary`, and
+    `generate_bank_feed`.
+
+- **Dashboard** (`core/views.py`, `core/templates/core/dashboard_content.html`):
+  - Added a company selector next to the month selector.
+  - Default company is the most recently connected `QBToken` realm.
+  - Sync/reconcile/draft-summary forms carry a hidden `realm_id` so actions target the
+    selected company.
+
+- **Tests**:
+  - Added `core/tests/test_realm_scoping.py` for schema, constraints, and migration
+    backfill behavior.
+  - Added `core/tests/test_multi_company.py` with 12 behavior tests verifying isolation
+    across realms for sync, reconciliation, anomaly detection, bank feed, close summary,
+    and dashboard views.
+  - Updated existing tests to pass explicit `realm_id` values and to patch agent config
+    so tests are environment-independent.
+
+- **Documentation**:
+  - Updated `README.md`, `docs/DEPLOY.md`, `docs/TODO.md`, and `docs/CURRENT_TASK.md`.
+  - Removed `QB_SANDBOX_COMPANY_ID` from `.env.example` (the OAuth callback provides the
+    real `realm_id`).
+
+**TDD:** wrote `test_realm_scoping.py` and `test_multi_company.py` first, drove the
+schema/migration and backend scoping changes, then iterated to green. Full suite:
+**176 tests pass**.
+
+**Improvements beyond the spec:**
+- Defer fetching the official company name from QuickBooks; the dashboard and
+  `QuickBooksCompany` store use the `realm_id` as the stable identifier until a name
+  lookup is added.
+- `get_active_tokens()` orders by most recently refreshed, matching the dashboard
+  default behavior.
+
+**Deviations:** None.
+
+---
+
 ## Environment note (applies to the Foundation stage)
 
 The build environment has Python 3.14.2 with no project packages pre-installed, and

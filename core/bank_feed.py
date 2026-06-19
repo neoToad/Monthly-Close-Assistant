@@ -70,8 +70,9 @@ def generate_bank_feed(
     extra_rate: float = 0.03,
     force: bool = False,
     seed: Optional[int] = None,
+    realm_id: Optional[str] = None,
 ) -> dict:
-    """Create ``BankTransaction`` records for ``month`` from ``Transaction`` rows.
+    """Create ``BankTransaction`` records for ``realm_id``/``month`` from ``Transaction`` rows.
 
     Introduces configurable discrepancies:
 
@@ -89,10 +90,13 @@ def generate_bank_feed(
 
     first, last = _month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        txns = txns.filter(realm_id=realm_id)
 
     if not txns.exists():
         return {
             "month": month,
+            "realm_id": realm_id or "",
             "created": 0,
             "dropped": 0,
             "duplicated": 0,
@@ -103,6 +107,8 @@ def generate_bank_feed(
         }
 
     existing = BankTransaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        existing = existing.filter(realm_id=realm_id)
     if existing.exists() and not force:
         raise ValueError(
             "Bank transactions already exist for this month. "
@@ -175,6 +181,7 @@ def generate_bank_feed(
     for _, row in df.iterrows():
         bank_rows.append(
             BankTransaction(
+                realm_id=realm_id or "",
                 date=row["date"],
                 vendor=row.get("vendor") or "",
                 amount=Decimal(str(row["amount"])),
@@ -204,6 +211,7 @@ def generate_bank_feed(
 
     return {
         "month": month,
+        "realm_id": realm_id or "",
         "created": created,
         "dropped": drop_n,
         "duplicated": dup_n,

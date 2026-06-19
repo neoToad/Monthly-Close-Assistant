@@ -1,15 +1,18 @@
 # TODO
 
-## Remove dummy data and use real QuickBooks data
+## Multi-company QuickBooks support
 
-- [x] Delete `core/demo_seed.py` and `core/management/commands/seed_demo_data.py`
-- [x] Remove `faker` from `requirements.txt`
-- [x] Relabel fake bank feed as testing-only
-- [x] Add dashboard actions: sync, reconcile, draft summary
-- [x] Update navigation and empty states
-- [x] Update tests
-- [x] Update README / DEPLOY / project docs
-- [x] Run full test suite and commit
+- [x] Add `realm_id` to `Transaction`, `BankTransaction`, `Flag`, and `CloseSummary`.
+- [x] Introduce `QuickBooksCompany` model for connected realms.
+- [x] Update unique constraints to `(realm_id, qb_transaction_id)` and `(realm_id, month)`.
+- [x] Backfill legacy rows in migration 0003 from the most recent `QBToken`.
+- [x] Scope QuickBooks sync by realm and sync all connected companies by default.
+- [x] Scope reconciliation, anomaly detection, bank feed, and close summary by `realm_id`.
+- [x] Add `--realm-id` to management commands.
+- [x] Add company selector to the dashboard and pass `realm_id` through actions.
+- [x] Add behavior tests verifying cross-realm isolation.
+- [x] Update README / DEPLOY / project docs.
+- [x] Run full test suite and commit.
 
 ## Design System (D1–D7)
 

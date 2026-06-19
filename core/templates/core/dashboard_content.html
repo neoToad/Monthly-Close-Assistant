@@ -2,12 +2,30 @@
     <header class="ledger-header">
         <h1 class="ledger-title">Close Assistant</h1>
         <div class="month-control">
+            <label for="company-select" class="visually-hidden">Company</label>
+            <select id="company-select" name="company"
+                    class="month-select"
+                    hx-get="{% url 'core:dashboard' %}"
+                    hx-target="#dashboard-content"
+                    hx-push-url="true"
+                    hx-vals='{"month": "{{ month }}"}'>
+                {% for company in companies %}
+                    <option value="{{ company.realm_id }}" {% if company.realm_id == realm_id %}selected{% endif %}>
+                        {{ company.name|default:company.realm_id }}
+                    </option>
+                {% empty %}
+                    <option value="{{ realm_id|default:"" }}" selected>{{ realm_id|default:"Select a company" }}</option>
+                {% endfor %}
+            </select>
+            <span class="caret" aria-hidden="true">▾</span>
+
             <label for="month-select" class="visually-hidden">Month</label>
             <select id="month-select" name="month"
                     class="month-select"
                     hx-get="{% url 'core:dashboard' %}"
                     hx-target="#dashboard-content"
-                    hx-push-url="true">
+                    hx-push-url="true"
+                    hx-vals='{"company": "{{ realm_id|default:"" }}"}'>
                 {% for m in months %}
                     <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
                 {% empty %}
@@ -35,6 +53,7 @@
               hx-swap="outerHTML">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
             <button type="submit" class="btn primary">Sync QuickBooks</button>
         </form>
         <form hx-post="{% url 'core:reconcile_month' %}"
@@ -42,6 +61,7 @@
               hx-swap="outerHTML">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
             <button type="submit" class="btn">Run Reconciliation</button>
         </form>
         <form hx-post="{% url 'core:draft_summary' %}"
@@ -49,6 +69,7 @@
               hx-swap="outerHTML">
             {% csrf_token %}
             <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
             <button type="submit" class="btn">Draft Close Summary</button>
         </form>
     </div>

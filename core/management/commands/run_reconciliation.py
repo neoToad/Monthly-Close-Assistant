@@ -21,10 +21,15 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser) -> None:
         parser.add_argument("month", help="Month in YYYY-MM format.")
+        parser.add_argument(
+            "--realm-id",
+            help="QuickBooks realm ID (company) to scope reconciliation to.",
+        )
 
     def handle(self, *args, **options) -> None:
         month = options["month"]
-        rec_result = run_reconciliation(month)
+        realm_id = options.get("realm_id")
+        rec_result = run_reconciliation(month, realm_id=realm_id)
 
         if rec_result.get("message"):
             self.stdout.write(self.style.WARNING(rec_result["message"]))
@@ -45,7 +50,7 @@ class Command(BaseCommand):
             f"  Unmatched GL rows:    {rec_result.get('unmatched_gl_rows', 0)}"
         )
 
-        anomaly_result = run_anomaly_detection(month)
+        anomaly_result = run_anomaly_detection(month, realm_id=realm_id)
         if anomaly_result.get("message"):
             self.stdout.write(self.style.WARNING(anomaly_result["message"]))
         else:

@@ -12,6 +12,7 @@ from core.models import (
     CloseSummary,
     Flag,
     QBToken,
+    QuickBooksCompany,
     Transaction,
 )
 
@@ -60,3 +61,11 @@ class QBTokenAdmin(admin.ModelAdmin):
               "refresh_token_expires_at", "created_at", "updated_at")
     readonly_fields = ("realm_id", "last_refreshed", "access_token_expires_at",
                         "refresh_token_expires_at", "created_at", "updated_at")
+
+
+@admin.register(QuickBooksCompany)
+class QuickBooksCompanyAdmin(admin.ModelAdmin):
+    list_display = ("realm_id", "name", "is_connected", "created_at")
+    list_filter = ("is_connected", "created_at")
+    search_fields = ("realm_id", "name")
+    readonly_fields = ("realm_id", "created_at")

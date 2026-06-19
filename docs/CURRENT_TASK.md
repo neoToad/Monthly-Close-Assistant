@@ -2,11 +2,23 @@
 
 ## Stage
 
-Add configurable LLM provider for the close-summary agent.
+Multi-company QuickBooks support is implemented and tested.
 
 ## Current task
 
-**Complete.** The close-summary agent now supports Anthropic (default) and any OpenAI-compatible provider (e.g. Ollama Cloud). Added `CLOSE_SUMMARY_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `CLOSE_SUMMARY_MODEL` env vars. Added `langchain-openai` dependency and tests. Full suite: 151 tests pass.
+**Done:**
+
+- Schema: `realm_id` added to `Transaction`, `BankTransaction`, `Flag`, and `CloseSummary`.
+- `QuickBooksCompany` model tracks each connected realm.
+- Unique constraints changed to `(realm_id, qb_transaction_id)` and `(realm_id, month)`.
+- `run_reconciliation(month, realm_id=None)` filters both GL and bank sides and scopes flags by realm.
+- `run_anomaly_detection(month, realm_id=None)` filters transactions and scopes anomaly flags by realm.
+- `draft_close_summary(month, realm_id=None)` filters inputs and saves per `(realm_id, month)`.
+- `generate_bank_feed(month, ..., realm_id=None)` filters source transactions and scopes generated bank rows by realm.
+- `--realm-id` added to `sync_quickbooks`, `run_reconciliation`, `generate_close_summary`, and `generate_bank_feed` commands.
+- Dashboard includes a company selector and passes `realm_id` through sync/reconcile/summary actions.
+- Behavior tests in `core/tests/test_multi_company.py` verify isolation across realms.
+- Full test suite: **176 tests pass**.
 
 ## Branch
 
@@ -14,4 +26,4 @@ Add configurable LLM provider for the close-summary agent.
 
 ## Next step
 
-Commit the changes and push to `feature/close-assistant-build`.
+Update project documentation (`README.md`, `docs/DEPLOY.md`, `docs/TODO.md`, `docs/CHANGELOG.md`) and commit.

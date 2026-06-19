@@ -25,9 +25,15 @@ class Transaction(models.Model):
     """A QuickBooks-sourced transaction, normalized into the internal schema.
 
     Pulled from Purchase, Deposit, and JournalEntry records during sync.
-    ``qb_transaction_id`` is the natural key used for idempotent sync (skip-existing).
+    ``qb_transaction_id`` is unique only within a QuickBooks realm, so idempotency
+    is keyed on ``(realm_id, qb_transaction_id)``.
     """
 
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this transaction belongs to.",
+    )
     date = models.DateField(help_text="Transaction date as recorded in QuickBooks.")
     vendor = models.CharField(max_length=200, help_text="Payee / vendor name.")
     amount = models.DecimalField(
@@ -41,9 +47,8 @@ class Transaction(models.Model):
     )
     qb_transaction_id = models.CharField(
         max_length=100,
-        unique=True,
         db_index=True,
-        help_text="QuickBooks transaction id; natural key for idempotent sync.",
+        help_text="QuickBooks transaction id; natural key for idempotent sync (scoped by realm_id).",
     )
     source_type = models.CharField(
         max_length=20, choices=SourceType.choices, help_text="QuickBooks record type."
@@ -51,6 +56,7 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ["-date", "vendor"]
+        unique_together = [["realm_id", "qb_transaction_id"]]
 
     def __str__(self) -> str:
         return f"{self.date} {self.vendor} {self.amount} ({self.source_type})"
@@ -64,6 +70,11 @@ class BankTransaction(models.Model):
     entry may have no GL match).
     """
 
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this bank row belongs to.",
+    )
     date = models.DateField(help_text="Date the transaction posted to the bank.")
     vendor = models.CharField(max_length=200, blank=True, default="")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -123,8 +134,14 @@ class Flag(models.Model):
 
     Relates to either a ``Transaction`` or a ``BankTransaction`` (whichever side the
     issue is on); both are nullable because a flag may point at only one side.
+    ``realm_id`` is denormalized from the linked transaction/bank row for fast filtering.
     """
 
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this flag belongs to.",
+    )
     flag_type = models.CharField(max_length=20, choices=FlagType.choices)
     transaction = models.ForeignKey(
         Transaction,
@@ -186,12 +203,16 @@ class CloseSummary(models.Model):
     """An agent-generated monthly close draft awaiting human review.
 
     The agent only ever produces draft text; a human marks it reviewed (with notes).
-    One summary per month (``month`` is unique).
+    One summary per company per month (``(realm_id, month)`` is unique).
     """
 
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this summary belongs to.",
+    )
     month = models.CharField(
         max_length=7,
-        unique=True,
         validators=[RegexValidator(r"^\d{4}-\d{2}$", "Month must be in YYYY-MM format.")],
         help_text="The close month in YYYY-MM format.",
     )
@@ -207,6 +228,7 @@ class CloseSummary(models.Model):
     class Meta:
         ordering = ["-month"]
         verbose_name_plural = "close summaries"
+        unique_together = [["realm_id", "month"]]
 
     def __str__(self) -> str:
         return f"Close summary {self.month} ({self.status})"
@@ -244,6 +266,66 @@ class QBToken(models.Model):
 
     def __str__(self) -> str:
         return f"QBToken realm={self.realm_id} (refreshed {self.last_refreshed})"
+
+    def get_access_token(self) -> str:
+        from core.quickbooks.tokens import decrypt_value
+
+        return decrypt_value(self.access_token_encrypted)
+
+    def get_refresh_token(self) -> str:
+        from core.quickbooks.tokens import decrypt_value
+
+        return decrypt_value(self.refresh_token_encrypted)
+
+    def is_access_token_expired(self, buffer_minutes: Optional[int] = None) -> bool:
+        """Return True when the access token is expired or within the refresh buffer.
+
+        ``buffer_minutes`` defaults to ``QB_TOKEN_REFRESH_BUFFER_MINUTES`` from
+        Django settings (Prompt 4). A token expiring inside that window is treated as
+        expired so it can be refreshed before the QuickBooks API rejects it mid-sync.
+        """
+        if self.access_token_expires_at is None:
+            return True
+
+        if buffer_minutes is None:
+            from django.conf import settings
+
+            buffer_minutes = getattr(settings, "QB_TOKEN_REFRESH_BUFFER_MINUTES", 15)
+
+        buffer = dt.timedelta(minutes=int(buffer_minutes))
+        return self.access_token_expires_at <= timezone.now() + buffer
+
+
+class QuickBooksCompany(models.Model):
+    """Lightweight metadata about a connected QuickBooks realm.
+
+    Created automatically when tokens are stored. The ``name`` is optional and can
+    be edited later; the UI falls back to ``realm_id`` when ``name`` is blank.
+    """
+
+    realm_id = models.CharField(
+        max_length=50,
+        primary_key=True,
+        help_text="QuickBooks company/realm id.",
+    )
+    name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Human-readable company name (optional).",
+    )
+    is_connected = models.BooleanField(
+        default=True,
+        help_text="Whether this realm currently has stored tokens.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name_plural = "QuickBooks companies"
+
+    def __str__(self) -> str:
+        return self.name or self.realm_id
 
     def get_access_token(self) -> str:
         from core.quickbooks.tokens import decrypt_value

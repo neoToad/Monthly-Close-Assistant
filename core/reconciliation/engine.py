@@ -34,14 +34,20 @@ def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
     return first, last
 
 
-def _load_dataframes(month: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _load_dataframes(month: str, realm_id: Optional[str] = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load Transaction and BankTransaction QuerySets as Pandas DataFrames."""
     first, last = _month_bounds(month)
 
-    txns = Transaction.objects.filter(date__range=(first, last)).values(
+    txns = Transaction.objects.filter(date__range=(first, last))
+    bank = BankTransaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        txns = txns.filter(realm_id=realm_id)
+        bank = bank.filter(realm_id=realm_id)
+
+    txns = txns.values(
         "id", "date", "vendor", "amount", "category", "gl_account", "qb_transaction_id"
     )
-    bank = BankTransaction.objects.filter(date__range=(first, last)).values(
+    bank = bank.values(
         "id", "date", "vendor", "amount", "category", "gl_account", "qb_transaction_id"
     )
 
@@ -99,7 +105,7 @@ def _find_best_match(
     return int(best.name)
 
 
-def run_reconciliation(month: str) -> dict:
+def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
     """Reconcile GL ``Transaction`` and ``BankTransaction`` records for ``month``.
 
     Creates ``Flag`` records for:
@@ -111,7 +117,7 @@ def run_reconciliation(month: str) -> dict:
 
     Returns a summary dict with counts.
     """
-    txn_df, bank_df = _load_dataframes(month)
+    txn_df, bank_df = _load_dataframes(month, realm_id=realm_id)
 
     if txn_df.empty and bank_df.empty:
         return {
@@ -129,6 +135,7 @@ def run_reconciliation(month: str) -> dict:
         if match_idx is None:
             flags_to_create.append(
                 Flag(
+                    realm_id=realm_id or "",
                     flag_type=FlagType.RECONCILIATION,
                     bank_transaction_id=int(bank_row["id"]),
                     reason=(
@@ -148,6 +155,7 @@ def run_reconciliation(month: str) -> dict:
         if amount_diff > AMOUNT_TOLERANCE:
             flags_to_create.append(
                 Flag(
+                    realm_id=realm_id or "",
                     flag_type=FlagType.RECONCILIATION,
                     transaction_id=int(txn_row["id"]),
                     bank_transaction_id=int(bank_row["id"]),
@@ -162,6 +170,7 @@ def run_reconciliation(month: str) -> dict:
         elif date_diff_days > 0:
             flags_to_create.append(
                 Flag(
+                    realm_id=realm_id or "",
                     flag_type=FlagType.RECONCILIATION,
                     transaction_id=int(txn_row["id"]),
                     bank_transaction_id=int(bank_row["id"]),
@@ -181,6 +190,7 @@ def run_reconciliation(month: str) -> dict:
     for _, txn_row in txn_df[~txn_df["matched"]].iterrows():
         flags_to_create.append(
             Flag(
+                realm_id=realm_id or "",
                 flag_type=FlagType.RECONCILIATION,
                 transaction_id=int(txn_row["id"]),
                 reason=(
@@ -194,17 +204,21 @@ def run_reconciliation(month: str) -> dict:
 
     first, last = _month_bounds(month)
     with transaction.atomic():
-        Flag.objects.filter(
+        delete_qs = Flag.objects.filter(
             flag_type=FlagType.RECONCILIATION
         ).filter(
             Q(transaction__date__range=(first, last))
             | Q(bank_transaction__date__range=(first, last))
-        ).delete()
+        )
+        if realm_id:
+            delete_qs = delete_qs.filter(realm_id=realm_id)
+        delete_qs.delete()
         Flag.objects.bulk_create(flags_to_create)
 
     logger.info(
-        "run_reconciliation(%s): created %s reconciliation flag(s)",
+        "run_reconciliation(%s, realm_id=%s): created %s reconciliation flag(s)",
         month,
+        realm_id,
         len(flags_to_create),
     )
 

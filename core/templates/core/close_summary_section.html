@@ -12,6 +12,8 @@
                 <form hx-post="{% url 'core:summary_review' summary.month %}"
                       hx-target="#summary-section"
                       hx-swap="outerHTML">
+                    {% csrf_token %}
+                    <input type="hidden" name="realm_id" value="{{ summary.realm_id }}">
                     <button type="submit" class="text-btn approve">Mark Reviewed</button>
                     <textarea name="reviewer_notes"
                               class="notes-field"

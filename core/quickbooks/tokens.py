@@ -17,7 +17,6 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
-from decouple import config
 from django.conf import settings
 from django.utils import timezone
 
@@ -70,13 +69,12 @@ def store_tokens(auth_client: Any, realm_id: Optional[str] = None):
 
     ``auth_client`` is an Intuit ``AuthClient`` (or a mock with the same attributes)
     that has just exchanged a code or refreshed. Tokens are encrypted at rest and
-    the row is upserted on ``realm_id`` (the QuickBooks company id).
+    the row is upserted on ``realm_id`` (the QuickBooks company id). Also creates or
+    updates the corresponding ``QuickBooksCompany`` record.
     """
-    from core.models import QBToken
+    from core.models import QBToken, QuickBooksCompany
 
-    realm_id = realm_id or getattr(auth_client, "realm_id", None) or config(
-        "QB_SANDBOX_COMPANY_ID", default=""
-    )
+    realm_id = realm_id or getattr(auth_client, "realm_id", None) or ""
     now = timezone.now()
     defaults = {
         "access_token_encrypted": encrypt_value(getattr(auth_client, "access_token", "") or ""),
@@ -90,6 +88,10 @@ def store_tokens(auth_client: Any, realm_id: Optional[str] = None):
     token, _created = QBToken.objects.update_or_create(
         realm_id=realm_id, defaults=defaults
     )
+    QuickBooksCompany.objects.update_or_create(
+        realm_id=realm_id,
+        defaults={"is_connected": True},
+    )
     return token
 
 
@@ -100,3 +102,10 @@ def get_active_token(realm_id: Optional[str] = None):
     if realm_id:
         return QBToken.objects.filter(realm_id=realm_id).first()
     return QBToken.objects.order_by("-updated_at").first()
+
+
+def get_active_tokens():
+    """Return all stored QuickBooks tokens (one per connected realm)."""
+    from core.models import QBToken
+
+    return QBToken.objects.order_by("-updated_at")

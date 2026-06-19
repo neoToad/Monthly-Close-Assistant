@@ -20,6 +20,8 @@ from core.models import (
     Flag,
     FlagStatus,
     FlagType,
+    QBToken,
+    QuickBooksCompany,
     Severity,
     SourceType,
     Transaction,
@@ -36,6 +38,7 @@ def make_transaction(**overrides) -> Transaction:
         gl_account="5000 - Supplies",
         qb_transaction_id="QB-123",
         source_type=SourceType.PURCHASE,
+        realm_id="realm-a",
     )
     defaults.update(overrides)
     return Transaction.objects.create(**defaults)
@@ -90,6 +93,7 @@ class BankTransactionTests(TestCase):
             date=date(2025, 1, 15),
             vendor="Acme Corp",
             amount=Decimal("420.00"),
+            realm_id="realm-a",
         )
         self.assertIsNone(bt.matched_transaction_id)
 
@@ -100,6 +104,7 @@ class BankTransactionTests(TestCase):
             vendor="Acme Corp",
             amount=Decimal("420.00"),
             matched_transaction_id=tx,
+            realm_id=tx.realm_id,
         )
         self.assertEqual(bt.matched_transaction_id, tx)
         tx.delete()
@@ -109,12 +114,16 @@ class BankTransactionTests(TestCase):
 
 class FlagTests(TestCase):
     def test_default_status_is_open(self) -> None:
-        flag = Flag.objects.create(flag_type=FlagType.RECONCILIATION, reason="oops")
+        flag = Flag.objects.create(
+            flag_type=FlagType.RECONCILIATION, reason="oops", realm_id="realm-a"
+        )
         self.assertEqual(flag.status, FlagStatus.OPEN)
         self.assertEqual(flag.status, "open")
 
     def test_default_severity_is_low(self) -> None:
-        flag = Flag.objects.create(flag_type=FlagType.ANOMALY, reason="weird amount")
+        flag = Flag.objects.create(
+            flag_type=FlagType.ANOMALY, reason="weird amount", realm_id="realm-a"
+        )
         self.assertEqual(flag.severity, Severity.LOW)
 
     def test_can_reference_a_transaction(self) -> None:
@@ -125,6 +134,7 @@ class FlagTests(TestCase):
             reason="Bank shows $452.00 but GL shows $450.00",
             severity=Severity.HIGH,
             status=FlagStatus.APPROVED,
+            realm_id=tx.realm_id,
         )
         self.assertEqual(flag.transaction, tx)
         self.assertIsNone(flag.bank_transaction)
@@ -134,31 +144,39 @@ class FlagTests(TestCase):
 
     def test_can_reference_a_bank_transaction(self) -> None:
         bt = BankTransaction.objects.create(
-            date=date(2025, 1, 15), vendor="Acme", amount=Decimal("10.00")
+            date=date(2025, 1, 15), vendor="Acme", amount=Decimal("10.00"),
+            realm_id="realm-a",
         )
         flag = Flag.objects.create(
-            flag_type=FlagType.ANOMALY, bank_transaction=bt, reason="duplicate"
+            flag_type=FlagType.ANOMALY,
+            bank_transaction=bt,
+            reason="duplicate",
+            realm_id=bt.realm_id,
         )
         self.assertEqual(flag.bank_transaction, bt)
         self.assertIsNone(flag.transaction)
 
     def test_created_at_is_set(self) -> None:
-        flag = Flag.objects.create(flag_type=FlagType.RECONCILIATION, reason="x")
+        flag = Flag.objects.create(
+            flag_type=FlagType.RECONCILIATION, reason="x", realm_id="realm-a"
+        )
         self.assertIsNotNone(flag.created_at)
 
 
 class CloseSummaryTests(TestCase):
     def test_defaults_are_draft(self) -> None:
-        summary = CloseSummary.objects.create(month="2025-01")
+        summary = CloseSummary.objects.create(month="2025-01", realm_id="realm-a")
         self.assertEqual(summary.status, "draft")
         self.assertEqual(summary.summary_text, "")
         self.assertEqual(summary.reviewer_notes, "")
 
-    def test_month_unique(self) -> None:
-        CloseSummary.objects.create(month="2025-02")
+    def test_month_unique_per_realm(self) -> None:
+        CloseSummary.objects.create(month="2025-02", realm_id="realm-a")
+        CloseSummary.objects.create(month="2025-02", realm_id="realm-b")
+        self.assertEqual(CloseSummary.objects.count(), 2)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                CloseSummary.objects.create(month="2025-02")
+                CloseSummary.objects.create(month="2025-02", realm_id="realm-a")
 
     def test_reviewed_flow(self) -> None:
         summary = CloseSummary.objects.create(
@@ -166,19 +184,20 @@ class CloseSummaryTests(TestCase):
             summary_text="Spend rose 12% driven by software.",
             status="reviewed",
             reviewer_notes="Looks good — approved.",
+            realm_id="realm-a",
         )
         self.assertEqual(summary.status, "reviewed")
         self.assertIn("software", summary.summary_text)
         self.assertIn("approved", summary.reviewer_notes)
 
     def test_created_at_is_set(self) -> None:
-        summary = CloseSummary.objects.create(month="2025-04")
+        summary = CloseSummary.objects.create(month="2025-04", realm_id="realm-a")
         self.assertIsNotNone(summary.created_at)
 
 
 class AdminRegistrationTests(TestCase):
     def test_all_models_registered_in_admin(self) -> None:
-        for model in (Transaction, BankTransaction, Flag, CloseSummary):
+        for model in (Transaction, BankTransaction, Flag, CloseSummary, QBToken, QuickBooksCompany):
             self.assertIn(
                 model,
                 admin.site._registry,

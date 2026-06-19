@@ -21,6 +21,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser) -> None:
         parser.add_argument("month", help="Month in YYYY-MM format.")
         parser.add_argument(
+            "--realm-id",
+            help="QuickBooks realm ID (company) to scope the bank feed to.",
+        )
+        parser.add_argument(
             "--drop-rate",
             type=float,
             default=0.05,
@@ -68,6 +72,7 @@ class Command(BaseCommand):
         try:
             result = generate_bank_feed(
                 month=month,
+                realm_id=options.get("realm_id"),
                 drop_rate=options["drop_rate"],
                 dup_rate=options["dup_rate"],
                 amount_shift_rate=options["amount_shift_rate"],

@@ -25,6 +25,7 @@ def _make_txn(**overrides) -> Transaction:
         gl_account="5000 - Supplies",
         qb_transaction_id="QB-1",
         source_type=SourceType.PURCHASE,
+        realm_id="realm-a",
     )
     defaults.update(overrides)
     return Transaction.objects.create(**defaults)
@@ -165,10 +166,21 @@ class RunReconciliationCommandTests(TestCase):
 
 class CloseSummaryCommandTests(TestCase):
     def test_no_data_creates_draft_summary(self) -> None:
+        from unittest import mock
+
         from core.models import CloseSummary
 
         out = StringIO()
-        call_command("generate_close_summary", "2025-01", stdout=out)
+        config_values = {
+            "CLOSE_SUMMARY_PROVIDER": "anthropic",
+            "ANTHROPIC_API_KEY": "",
+            "OPENAI_API_KEY": "",
+        }
+        with mock.patch(
+            "core.agent.summary.config",
+            side_effect=lambda key, default="": config_values.get(key, default),
+        ):
+            call_command("generate_close_summary", "2025-01", stdout=out)
         self.assertEqual(CloseSummary.objects.count(), 1)
         summary = CloseSummary.objects.first()
         self.assertEqual(summary.status, "draft")

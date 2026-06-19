@@ -110,11 +110,12 @@ class SyncCommandTests(TestCase):
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
             mock_build.return_value = mock.MagicMock()
-            call_command("sync_quickbooks", stdout=out)
+            call_command("sync_quickbooks", "--realm-id", "123145", stdout=out)
 
         self.assertIn("created", out.getvalue().lower())
         from core.models import Transaction
         self.assertEqual(Transaction.objects.count(), 1)
+        self.assertEqual(Transaction.objects.first().realm_id, "123145")
 
     def test_command_is_idempotent(self) -> None:
         """Running sync_quickbooks twice with the same records must not duplicate."""
@@ -130,9 +131,9 @@ class SyncCommandTests(TestCase):
              mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
              mock.patch.object(qb_client, "pull_raw_records", return_value=raw):
             mock_build.return_value = mock.MagicMock()
-            call_command("sync_quickbooks", stdout=StringIO())
+            call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
             self.assertEqual(Transaction.objects.count(), 1)
-            call_command("sync_quickbooks", stdout=StringIO())
+            call_command("sync_quickbooks", "--realm-id", "123145", stdout=StringIO())
             self.assertEqual(Transaction.objects.count(), 1)
 
 
@@ -187,12 +188,17 @@ class DashboardActionViewTests(TestCase):
         }
 
         with mock.patch.object(qb_tokens, "get_active_token", return_value=token):
-            resp = self.client.post("/dashboard/sync/", {"month": "2025-01"})
+            resp = self.client.post(
+                "/dashboard/sync/",
+                {"month": "2025-01", "realm_id": "123145"},
+            )
 
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "QuickBooks sync complete")
         self.assertContains(resp, "created 3")
         mock_sync.assert_called_once()
+        call_kwargs = mock_sync.call_args.kwargs
+        self.assertEqual(call_kwargs.get("realm_id"), "123145")
 
     def test_reconcile_month_creates_flags(self) -> None:
         from core.models import BankTransaction, Transaction
@@ -203,12 +209,14 @@ class DashboardActionViewTests(TestCase):
             amount=Decimal("100.00"),
             qb_transaction_id="QB-1",
             source_type="Purchase",
+            realm_id="realm-a",
         )
         BankTransaction.objects.create(
             date=txn.date,
             vendor=txn.vendor,
             amount=Decimal("102.50"),
             qb_transaction_id=txn.qb_transaction_id,
+            realm_id=txn.realm_id,
         )
 
         resp = self.client.post("/dashboard/reconcile/", {"month": "2025-01"})

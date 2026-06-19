@@ -8,7 +8,7 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
 
 - **QuickBooks sync** — OAuth 2.0 connection to QuickBooks Online, pulls
   Purchase / Deposit / JournalEntry records, and stores them as normalized
-  `Transaction` rows.
+  `Transaction` rows. Supports multiple connected companies (realms).
 - **Testing bank feed** — optionally generates a configurable bank-side transaction
   set with realistic discrepancies for validating reconciliation logic.
 - **Reconciliation engine** — Pandas-based matching on vendor, amount within $0.01,
@@ -17,8 +17,9 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
   transactions within 7 days, new vendors, and category month-over-month jumps > 200%.
 - **Close-summary agent** — LangGraph/LangChain-Anthropic agent that drafts a
   month-end summary; falls back to deterministic output when no API key is set.
-- **HTMX review dashboard** — month selector, open flags table, approve/reject
-  actions, and close-summary review, all server-rendered with HTMX partial updates.
+- **HTMX review dashboard** — company and month selectors, open flags table,
+  approve/reject actions, and close-summary review, all server-rendered with HTMX
+  partial updates.
 - **Scheduled tasks** — Celery + Redis beat schedule runs the nightly QuickBooks sync.
 - **Dockerized** — `docker compose` stack with Postgres, Redis, web app, Celery worker,
   and beat scheduler.
@@ -129,7 +130,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **114 tests pass**.
+The latest full-suite result: **176 tests pass**.
 
 ## Required environment variables
 
@@ -159,10 +160,10 @@ See `.env.example` for the full list and comments.
 
 | Command | What it does |
 | --- | --- |
-| `python manage.py sync_quickbooks` | Pulls Purchase/Deposit/JournalEntry records from QuickBooks and stores normalized `Transaction` rows. Idempotent keyed on `qb_transaction_id`. |
-| `python manage.py generate_bank_feed YYYY-MM` | *(Testing only)* Generates a synthetic bank side for a month with configurable discrepancy rates. Use `--force` to overwrite. |
-| `python manage.py run_reconciliation YYYY-MM` | Reconciles GL and bank rows for the month and runs anomaly detection. Idempotent. |
-| `python manage.py generate_close_summary YYYY-MM` | Drafts a close summary for the month (LLM if `ANTHROPIC_API_KEY` is set, deterministic fallback otherwise). |
+| `python manage.py sync_quickbooks` | Pulls records for all connected QuickBooks realms, or use `--realm-id` to sync one. Idempotent keyed on `(realm_id, qb_transaction_id)`. |
+| `python manage.py generate_bank_feed YYYY-MM` | *(Testing only)* Generates a synthetic bank side for a month. Use `--realm-id` to scope to one realm and `--force` to overwrite. |
+| `python manage.py run_reconciliation YYYY-MM` | Reconciles GL and bank rows for the month; use `--realm-id` to scope to one realm. Runs anomaly detection. Idempotent. |
+| `python manage.py generate_close_summary YYYY-MM` | Drafts a close summary for the month; use `--realm-id` to scope to one realm. |
 
 To pull real QuickBooks data, connect your app via `/quickbooks/oauth/start/` and then
 sync from the dashboard or run `python manage.py sync_quickbooks`.
