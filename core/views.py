@@ -68,19 +68,23 @@ def reconcile_account_suggest(request, qb_account_id: str) -> HttpResponse:
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
-    qb_api_client: Any | None = None
+    qb_current_balance: Decimal | None = None
     token = qb_tokens.get_active_token(realm_id=realm_id)
     if token is not None:
         try:
             qb_api_client = qb_client.build_quickbooks_client(token)
+            balances = qb_client.fetch_account_current_balances(qb_api_client)
+            info = balances.get(qb_account_id)
+            if info:
+                qb_current_balance = Decimal(str(info.get("balance", 0)))
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not build QB client for suggestions: %s", exc)
+            logger.warning("Could not fetch QB current balance for suggestions: %s", exc)
 
     suggestions_result = reconcile_agent.suggest_account_fixes(
-        month, realm_id, qb_account_id, qb_api_client=qb_api_client
+        month, realm_id, qb_account_id, qb_current_balance=qb_current_balance
     )
     inputs = reconcile_agent.gather_account_inputs(
-        month, realm_id, qb_account_id, qb_api_client=qb_api_client
+        month, realm_id, qb_account_id, qb_current_balance=qb_current_balance
     )
 
     context = {

@@ -11,7 +11,7 @@ from django.core.management.base import BaseCommand, CommandError
 from core.agent import reconcile as reconcile_agent
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.quickbooks import writes as qb_writes
+from core.services import qb_writes
 
 
 class Command(BaseCommand):

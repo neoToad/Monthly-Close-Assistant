@@ -9,7 +9,7 @@ from unittest import mock
 from django.test import TestCase
 
 from core.models import QBAccount, QuickBooksCompany
-from core.quickbooks.writes import (
+from core.services.qb_writes import (
     apply_suggestion,
     create_deposit,
     create_journal_entry,

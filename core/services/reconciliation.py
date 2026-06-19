@@ -23,8 +23,8 @@ from core.models import (
 )
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.quickbooks import writes as qb_writes
 from core.reconciliation.engine import run_reconciliation
+from core.services import qb_writes
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,17 @@ def apply_account_reconciliation_suggestions(
     all_suggestions = suggestions_result["suggestions"]
     selected = [s for s in all_suggestions if s.get("id") in suggestion_ids]
 
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    try:
+        state = AccountReconciliationState.objects.get(
+            company=company, qb_account_id=qb_account_id, month=month
+        )
+        already_applied = set(state.applied_suggestions or [])
+    except AccountReconciliationState.DoesNotExist:
+        already_applied = set()
+
+    not_yet_applied = [s for s in selected if s.get("id") not in already_applied]
+
     preview_objects = [
         {
             "object_type": s["type"].replace("_", " ").title(),
@@ -91,12 +102,23 @@ def apply_account_reconciliation_suggestions(
         "sync_error": None,
     }
 
-    if dry_run or not selected:
-        result["notice"] = (
-            f"Previewing {len(selected)} adjustment(s) for {result['account_name']}."
-            if selected
-            else f"No selected suggestions for {result['account_name']}."
-        )
+    result["already_applied_count"] = len(selected) - len(not_yet_applied)
+
+    if dry_run or not not_yet_applied:
+        if dry_run:
+            result["notice"] = (
+                f"Previewing {len(selected)} adjustment(s) for {result['account_name']}."
+                if selected
+                else f"No selected suggestions for {result['account_name']}."
+            )
+        else:
+            if selected:
+                result["notice"] = (
+                    f"{len(selected)} selected suggestion(s) for {result['account_name']} "
+                    "were already applied; nothing new to write."
+                )
+            else:
+                result["notice"] = f"No selected suggestions for {result['account_name']}."
         return result
 
     token = qb_tokens.get_active_token(realm_id=realm_id)
@@ -117,7 +139,7 @@ def apply_account_reconciliation_suggestions(
 
     created_objects: list[dict[str, Any]] = []
     try:
-        for suggestion in selected:
+        for suggestion in not_yet_applied:
             created = qb_writes.apply_suggestion(
                 qb,
                 suggestion,
@@ -143,13 +165,13 @@ def apply_account_reconciliation_suggestions(
 
     run_reconciliation(month, realm_id=realm_id)
 
-    company = QuickBooksCompany.objects.for_realm(realm_id)
+    new_ids = {s.get("id") for s in not_yet_applied}
     try:
         state = AccountReconciliationState.objects.get(
             company=company, qb_account_id=qb_account_id, month=month
         )
         applied = set(state.applied_suggestions or [])
-        applied.update(suggestion_ids)
+        applied.update(new_ids)
         state.applied_suggestions = list(applied)
         if state.difference and abs(state.difference) <= BALANCE_TOLERANCE:
             state.status = ReconciliationStatus.RECONCILED
@@ -179,7 +201,14 @@ def apply_account_reconciliation_suggestions(
     except BankStatementBalance.DoesNotExist:
         pass
 
-    result["notice"] = (
-        f"Applied {len(created_objects)} adjustment(s) to QuickBooks for {result['account_name']}."
-    )
+    skipped_count = result["already_applied_count"]
+    if skipped_count:
+        result["notice"] = (
+            f"Applied {len(created_objects)} new adjustment(s) to QuickBooks for "
+            f"{result['account_name']} ({skipped_count} already applied)."
+        )
+    else:
+        result["notice"] = (
+            f"Applied {len(created_objects)} adjustment(s) to QuickBooks for {result['account_name']}."
+        )
     return result

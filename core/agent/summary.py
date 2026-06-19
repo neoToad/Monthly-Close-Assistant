@@ -27,6 +27,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 
 from core.common.dates import month_bounds, prior_month
+from core.services.retry import with_retry
 from core.models import (
     CloseSummary,
     CloseSummaryStatus,
@@ -35,7 +36,6 @@ from core.models import (
     QuickBooksCompany,
     Transaction,
 )
-from core.quickbooks import client as qb_client
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +86,13 @@ def _serialize_flag(flag: Flag) -> dict[str, Any]:
 def gather_inputs(
     month: str,
     realm_id: Optional[str] = None,
-    qb_api_client: Optional[Any] = None,
+    qb_gl_totals: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Collect the inputs the agent needs to draft a close summary.
 
-    When ``qb_api_client`` is provided, also fetch the QuickBooks GeneralLedger report
-    for the month and include account-level totals as ``qb_gl_totals``.
+    ``qb_gl_totals`` is an optional account-level totals dict supplied by the caller
+    (e.g., from a QuickBooks GeneralLedger report). The agent itself never calls
+    QuickBooks.
     """
     first, last = month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
@@ -114,12 +115,7 @@ def gather_inputs(
         prior_txns = prior_txns.filter(realm_id=realm_id)
     prior_total = prior_txns.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
-    qb_gl_totals: dict[str, Decimal] = {}
-    if qb_api_client is not None:
-        try:
-            qb_gl_totals = qb_client.fetch_general_ledger_summary(qb_api_client, month)
-        except Exception as exc:  # noqa: BLE001 — GL cross-check is best-effort
-            logger.warning("Failed to fetch QB GeneralLedger summary for %s: %s", month, exc)
+    qb_gl_totals = qb_gl_totals or {}
 
     return {
         "month": month,
@@ -215,7 +211,11 @@ def _get_summary_provider() -> str:
 def _call_llm(prompt: str, llm: Optional[Any] = None) -> str:
     """Invoke the configured LLM, or fall back to the deterministic summary."""
     if llm is not None:
-        return llm.invoke(prompt).content
+        return with_retry(
+            lambda: llm.invoke(prompt).content,
+            exceptions=(Exception,),
+            max_attempts=3,
+        )
 
     provider = _get_summary_provider()
     model_name = config("CLOSE_SUMMARY_MODEL", default="claude-sonnet-4-6")
@@ -245,7 +245,11 @@ def _call_anthropic_llm(prompt: str, model_name: str) -> str | None:
         [("system", _SYSTEM_PROMPT), ("human", "{prompt}")]
     )
     chain = template | chat
-    return chain.invoke({"prompt": prompt}).content
+    return with_retry(
+        lambda: chain.invoke({"prompt": prompt}).content,
+        exceptions=(Exception,),
+        max_attempts=3,
+    )
 
 
 def _call_openai_llm(prompt: str, model_name: str) -> str | None:
@@ -272,7 +276,11 @@ def _call_openai_llm(prompt: str, model_name: str) -> str | None:
         [("system", _SYSTEM_PROMPT), ("human", "{prompt}")]
     )
     chain = template | chat
-    return chain.invoke({"prompt": prompt}).content
+    return with_retry(
+        lambda: chain.invoke({"prompt": prompt}).content,
+        exceptions=(Exception,),
+        max_attempts=3,
+    )
 
 
 def _draft_node(state: SummaryState) -> SummaryState:
@@ -307,21 +315,21 @@ def draft_close_summary(
     month: str,
     realm_id: Optional[str] = None,
     llm: Optional[Any] = None,
-    qb_api_client: Optional[Any] = None,
+    qb_gl_totals: Optional[dict[str, Any]] = None,
 ) -> CloseSummary:
     """Draft a close summary for ``realm_id``/``month`` and save it as a ``CloseSummary`` draft.
 
     ``llm`` is an optional prebuilt LangChain runnable (or any object with an
     ``invoke(prompt)`` method returning an object with a ``.content`` string).
-    ``qb_api_client`` is an optional QuickBooks client for fetching the GeneralLedger
-    cross-check totals.
+    ``qb_gl_totals`` is an optional account-level totals dict supplied by the caller.
+    The agent itself never calls QuickBooks.
     When omitted, the function reads ``ANTHROPIC_API_KEY`` from the environment
     and builds a Claude-backed chain; if the key is absent, it falls back to a
     deterministic summary.
     """
     realm_id = realm_id or ""
     company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
-    inputs = gather_inputs(month, realm_id=realm_id, qb_api_client=qb_api_client)
+    inputs = gather_inputs(month, realm_id=realm_id, qb_gl_totals=qb_gl_totals)
     if llm is not None:
         inputs["_llm"] = llm
 

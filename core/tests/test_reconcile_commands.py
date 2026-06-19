@@ -66,7 +66,7 @@ class SuggestAccountFixesCommandTests(TestCase):
         ):
             with mock.patch("core.quickbooks.client.build_quickbooks_client"):
                 with mock.patch(
-                    "core.quickbooks.writes.apply_suggestion",
+                    "core.services.qb_writes.apply_suggestion",
                     return_value={
                         "object_type": "Purchase",
                         "id": "QB-P-1",
@@ -167,7 +167,7 @@ class ApplyAccountFixCommandTests(TestCase):
         ):
             with mock.patch("core.quickbooks.client.build_quickbooks_client"):
                 with mock.patch(
-                    "core.quickbooks.writes.apply_suggestion",
+                    "core.services.qb_writes.apply_suggestion",
                     return_value={
                         "object_type": "Purchase",
                         "id": "QB-P-1",

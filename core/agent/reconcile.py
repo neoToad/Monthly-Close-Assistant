@@ -23,6 +23,7 @@ from core.common.constants import (
     DEFAULT_INCOME_ACCOUNT,
 )
 from core.common.dates import month_bounds, prior_month
+from core.services.retry import with_retry
 from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
@@ -31,7 +32,6 @@ from core.models import (
     ReconciliationStatus,
     Transaction,
 )
-from core.quickbooks import client as qb_client
 from core.reconciliation.engine import compute_posted_total
 
 logger = logging.getLogger(__name__)
@@ -85,9 +85,13 @@ def gather_account_inputs(
     month: str,
     realm_id: str,
     qb_account_id: str,
-    qb_api_client: Optional[Any] = None,
+    qb_current_balance: Optional[Decimal | str] = None,
 ) -> dict[str, Any]:
-    """Collect the inputs the reconciliation agent needs for one account/month."""
+    """Collect the inputs the reconciliation agent needs for one account/month.
+
+    ``qb_current_balance`` is an optional live QuickBooks account balance supplied by
+    the caller (e.g., the dashboard view). The agent itself never calls QuickBooks.
+    """
     first, last = month_bounds(month)
     realm_id = realm_id or ""
     company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
@@ -147,15 +151,12 @@ def gather_account_inputs(
         if prior_qs.exists():
             prior_balance = prior_qs.first().ending_balance
 
-    qb_current_balance: Decimal | None = None
-    if qb_api_client is not None:
+    current_balance: Decimal | None = None
+    if qb_current_balance is not None:
         try:
-            balances = qb_client.fetch_account_current_balances(qb_api_client)
-            info = balances.get(qb_account_id)
-            if info:
-                qb_current_balance = Decimal(str(info.get("balance", 0)))
+            current_balance = Decimal(str(qb_current_balance))
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to fetch QB current balance for %s: %s", qb_account_id, exc)
+            logger.warning("Invalid qb_current_balance for %s: %s", qb_account_id, exc)
 
     return {
         "month": month,
@@ -170,7 +171,7 @@ def gather_account_inputs(
         "unmatched_gl": [_serialize_txn_row(txn) for txn in unmatched_gl],
         "matched_differences": matched_diffs,
         "prior_balance": str(prior_balance) if prior_balance is not None else None,
-        "qb_current_balance": str(qb_current_balance) if qb_current_balance is not None else None,
+        "qb_current_balance": str(current_balance) if current_balance is not None else None,
     }
 
 
@@ -432,7 +433,11 @@ def _get_reconcile_provider() -> str:
 def _call_llm(prompt: str, llm: Optional[Any] = None) -> str | None:
     """Invoke the configured LLM, or return None to fall back to deterministic suggestions."""
     if llm is not None:
-        return llm.invoke(prompt).content
+        return with_retry(
+            lambda: llm.invoke(prompt).content,
+            exceptions=(Exception,),
+            max_attempts=3,
+        )
 
     provider = _get_reconcile_provider()
     model_name = config("RECONCILE_MODEL", default="claude-sonnet-4-6")
@@ -459,7 +464,11 @@ def _call_anthropic_llm(prompt: str, model_name: str) -> str | None:
         [("system", _SYSTEM_PROMPT), ("human", "{prompt}")]
     )
     chain = template | chat
-    return chain.invoke({"prompt": prompt}).content
+    return with_retry(
+        lambda: chain.invoke({"prompt": prompt}).content,
+        exceptions=(Exception,),
+        max_attempts=3,
+    )
 
 
 def _call_openai_llm(prompt: str, model_name: str) -> str | None:
@@ -484,25 +493,30 @@ def _call_openai_llm(prompt: str, model_name: str) -> str | None:
         [("system", _SYSTEM_PROMPT), ("human", "{prompt}")]
     )
     chain = template | chat
-    return chain.invoke({"prompt": prompt}).content
+    return with_retry(
+        lambda: chain.invoke({"prompt": prompt}).content,
+        exceptions=(Exception,),
+        max_attempts=3,
+    )
 
 
 def suggest_account_fixes(
     month: str,
     realm_id: str,
     qb_account_id: str,
-    qb_api_client: Optional[Any] = None,
+    qb_current_balance: Optional[Decimal | str] = None,
     llm: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Generate adjusting-entry suggestions for a single account/month.
 
     Falls back to deterministic suggestions when no API key is configured or when
-    the LLM returns invalid JSON.
+    the LLM returns invalid JSON. ``qb_current_balance`` is supplied by the caller;
+    the agent never calls QuickBooks directly.
     """
     realm_id = realm_id or ""
     company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
     inputs = gather_account_inputs(
-        month, realm_id, qb_account_id, qb_api_client=qb_api_client
+        month, realm_id, qb_account_id, qb_current_balance=qb_current_balance
     )
 
     suggestions: list[dict[str, Any]] = []

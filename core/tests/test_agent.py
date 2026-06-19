@@ -100,19 +100,16 @@ class GatherInputsTests(TestCase):
 class GeneralLedgerCrossCheckTests(TestCase):
     def test_gather_inputs_includes_qb_gl_totals(self) -> None:
         from core.agent.summary import gather_inputs
-        from core.quickbooks import client as qb_client
 
         _make_txn(qb_transaction_id="QB-A", category="Software", amount=Decimal("200.00"))
         _make_qb_account(account_id="acc-1", name="Checking")
 
-        mock_api_client = mock.MagicMock()
-        with mock.patch.object(qb_client, "fetch_general_ledger_summary") as mock_gl:
-            mock_gl.return_value = {"Checking": Decimal("1000.00")}
-            inputs = gather_inputs("2025-01", realm_id="realm-a", qb_api_client=mock_api_client)
+        inputs = gather_inputs(
+            "2025-01", realm_id="realm-a", qb_gl_totals={"Checking": Decimal("1000.00")}
+        )
 
         self.assertIn("qb_gl_totals", inputs)
         self.assertEqual(inputs["qb_gl_totals"], {"Checking": Decimal("1000.00")})
-        mock_gl.assert_called_once_with(mock_api_client, "2025-01")
 
     def test_deterministic_summary_mentions_qb_gl_totals(self) -> None:
         from core.agent.summary import _deterministic_summary

@@ -1,9 +1,9 @@
-"""Thin, mockable wrappers for creating QuickBooks adjusting entries.
+"""QuickBooks adjusting-entry write helpers.
 
 These helpers build python-quickbooks objects (JournalEntry, Purchase, Deposit)
-from the suggestion structures produced by ``core.agent.reconcile``. They map
-account names to QB ``AccountRef`` ids via local ``QBAccount`` rows and never
-hit the QuickBooks API for account lookup more than once per call.
+from the suggestion structures produced by ``core.agent.reconcile``. They live in
+``core.services`` rather than ``core.quickbooks`` so the agent layer can remain a
+read-only suggestion engine and never import write logic directly.
 """
 from __future__ import annotations
 
@@ -12,18 +12,25 @@ from decimal import Decimal
 from typing import Any
 
 from quickbooks import QuickBooks
+from quickbooks.exceptions import QuickbooksException
 from quickbooks.objects.base import Ref
 from quickbooks.objects.deposit import Deposit, DepositLine, DepositLineDetail
+from quickbooks.objects.detailline import (
+    AccountBasedExpenseLine,
+    AccountBasedExpenseLineDetail,
+)
 from quickbooks.objects.journalentry import (
     JournalEntry,
     JournalEntryLine,
     JournalEntryLineDetail,
 )
 from quickbooks.objects.purchase import Purchase
-from quickbooks.objects.detailline import AccountBasedExpenseLine
-from quickbooks.objects.detailline import AccountBasedExpenseLineDetail
 
 from core.models import QBAccount
+from core.services.retry import with_retry
+
+
+QB_RETRYABLE_EXCEPTIONS = (QuickbooksException, ConnectionError, TimeoutError)
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +94,7 @@ def create_journal_entry(
         je_line.JournalEntryLineDetail = detail
         je.Line.append(je_line)
 
-    je.save(qb=qb_client)
+    with_retry(lambda: je.save(qb=qb_client), exceptions=QB_RETRYABLE_EXCEPTIONS)
     debit_total = sum(
         (Decimal(str(line["amount"])) for line in lines if Decimal(str(line["amount"])) > 0),
         start=Decimal("0"),
@@ -141,7 +148,9 @@ def create_purchase(
     line.AccountBasedExpenseLineDetail = detail
     purchase.Line = [line]
 
-    purchase.save(qb=qb_client)
+    with_retry(
+        lambda: purchase.save(qb=qb_client), exceptions=QB_RETRYABLE_EXCEPTIONS
+    )
     return {
         "object_type": "Purchase",
         "id": str(getattr(purchase, "Id", "")),
@@ -183,7 +192,7 @@ def create_deposit(
     line.DepositLineDetail = detail
     deposit.Line = [line]
 
-    deposit.save(qb=qb_client)
+    with_retry(lambda: deposit.save(qb=qb_client), exceptions=QB_RETRYABLE_EXCEPTIONS)
     return {
         "object_type": "Deposit",
         "id": str(getattr(deposit, "Id", "")),
