@@ -6,6 +6,21 @@
 ## Goal
 Scope all data and dashboard actions by QuickBooks realm (company), allowing multiple sandbox companies to be connected and reviewed independently.
 
+## Data sources
+
+The sync pipeline now pulls six QuickBooks transaction types and the chart of accounts:
+
+- `Purchase`, `Deposit`, `JournalEntry` (original sources).
+- `Bill` — accrued vendor invoices stored as positive amounts; excluded from the
+  synthetic bank feed when `--cash-only` is set because they are not yet cash.
+- `BillPayment` — cash settlement of bills; included in `--cash-only` bank feeds.
+- `VendorCredit` — vendor credit memos that reduce amounts owed.
+- `QBAccount` — QuickBooks chart of accounts, synced as master data keyed on
+  `(realm_id, account_id)`. Used to scope cash-like `JournalEntry` lines in the
+  bank feed and as context for future account validation.
+- `GeneralLedger` report — fetched on demand when drafting a close summary to
+  provide a QuickBooks-side cross-check of account totals (read-only; no DB table).
+
 ## Approach
 Followed the plan in `docs/plans/multi_company_qb_plan.md` with these concrete decisions:
 

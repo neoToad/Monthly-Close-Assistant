@@ -59,6 +59,14 @@ commit, per the AGENTS.md workflow.
 - Added `GeneralLedgerSummaryTests` and `GeneralLedgerCrossCheckTests` for the fetch
   helper and deterministic summary output.
 
+## docs(qb): document expanded QuickBooks data sources
+
+- Updated `docs/PLAN.md` with a "Data sources" section describing the six
+  transaction types, `QBAccount` master data, and GeneralLedger report cross-check.
+- Updated `README.md` feature list, management-command table, and latest test count
+  (211 tests).
+- Updated `docs/TODO.md` to check off the data-source expansion checklist.
+
 ## feat(qb): fetch and store QuickBooks company names
 
 - Added `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`

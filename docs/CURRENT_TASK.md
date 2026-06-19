@@ -2,16 +2,20 @@
 
 ## Stage
 
-Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
+`docs/plans/add_quickbooks_data_sources_plan.md` is complete and committed.
 
-## Current step
+## Current task
 
-**Step 5 — GeneralLedger report cross-check in close summary**
-- Add `fetch_general_ledger_summary(qb_client, month, qb_token=None)` to
-  `core/quickbooks/client.py` using `qb_client.get_report("GeneralLedger")`.
-- Call it from `core/agent/summary.py::gather_inputs()` and include `qb_gl_totals`.
-- Update `build_prompt()` and `_deterministic_summary()` to mention QB GL totals.
-- Write failing tests first, then implement.
+All six steps of the QuickBooks data-source expansion are implemented:
+
+1. ✅ Extended `SourceType` and added `QBAccount` model + migration.
+2. ✅ Sync Bills, BillPayments, VendorCredits, and Accounts.
+3. ✅ Added test coverage for normalization, account sync, and realm isolation.
+4. ✅ Scoped bank feed to cash-like transaction types with `--cash-only`.
+5. ✅ Added GeneralLedger report cross-check in close summary.
+6. ✅ Updated project documentation.
+
+Full test suite: **211 tests pass** inside Docker.
 
 ## Branch
 
@@ -19,4 +23,4 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Next step
 
-Commit `feat(agent): cross-check close summary against QuickBooks GeneralLedger`, then begin Step 6.
+Await further instructions.

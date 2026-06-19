@@ -34,8 +34,8 @@
 - [x] Add realm-isolation tests for `QBAccount`
 - [x] Scope bank feed to cash-like transaction types with `--cash-only`
 - [x] Add `fetch_general_ledger_summary` and include in close-summary inputs
-- [ ] Update README and project docs
-- [ ] Run full test suite and commit each step
+- [x] Update README and project docs
+- [x] Run full test suite and commit each step
 
 ## Design System (D1–D7)
 
