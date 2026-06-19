@@ -499,3 +499,141 @@ class DashboardActionViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Close summary drafted")
         self.assertEqual(CloseSummary.objects.filter(month="2025-01").count(), 1)
+
+
+class ReconcileAccountViewTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reviewer", password="test")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _setup_account_and_balance(self) -> None:
+        from core.models import BankStatementBalance, QBAccount, QuickBooksCompany
+
+        company = QuickBooksCompany.objects.for_realm("realm-a")
+        QBAccount.objects.create(
+            company=company,
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Operating Checking",
+            account_type="Bank",
+        )
+        return BankStatementBalance.objects.create(
+            company=company,
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("-3621.93"),
+            source=BankStatementBalance.Source.MANUAL,
+        )
+
+    def test_suggest_modal_returns_suggestion_cards(self) -> None:
+        self._setup_account_and_balance()
+        resp = self.client.get(
+            "/dashboard/account/qb-acc-1/suggest/",
+            {"month": "2026-06", "realm_id": "realm-a"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Reconcile Operating Checking")
+        self.assertContains(resp, "Suggested fixes")
+
+    def test_apply_dry_run_returns_preview_without_qb_call(self) -> None:
+        from core.models import Transaction, SourceType
+
+        balance = self._setup_account_and_balance()
+        Transaction.objects.create(
+            company=balance.company,
+            date=dt.date(2026, 6, 15),
+            vendor="Acme",
+            amount=Decimal("568.38"),
+            gl_account="Operating Checking",
+            qb_transaction_id="QB-1",
+            source_type=SourceType.PURCHASE,
+            realm_id="realm-a",
+        )
+
+        with mock.patch("core.views.qb_writes.apply_suggestion") as mock_apply:
+            resp = self.client.post(
+                "/dashboard/account/qb-acc-1/apply/",
+                {
+                    "month": "2026-06",
+                    "realm_id": "realm-a",
+                    "suggestion_ids": ["sug-1"],
+                    "dry_run": "true",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Preview")
+        mock_apply.assert_not_called()
+
+    def test_apply_confirmation_calls_qb_and_refreshes_balances(self) -> None:
+        from core.models import Transaction, SourceType
+        from core.quickbooks import client as qb_client
+
+        balance = self._setup_account_and_balance()
+        Transaction.objects.create(
+            company=balance.company,
+            date=dt.date(2026, 6, 15),
+            vendor="Acme",
+            amount=Decimal("568.38"),
+            gl_account="Operating Checking",
+            qb_transaction_id="QB-1",
+            source_type=SourceType.PURCHASE,
+            realm_id="realm-a",
+        )
+        token = mock.MagicMock(realm_id="realm-a")
+
+        with mock.patch("core.views.qb_tokens.get_active_token", return_value=token), \
+             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
+             mock.patch.object(qb_client, "sync_transactions", return_value={"created": 0, "skipped": 0, "errors": 0}) as mock_sync, \
+             mock.patch("core.views.qb_writes.apply_suggestion") as mock_apply:
+            mock_apply.return_value = {"object_type": "JournalEntry", "id": "je-1", "amount": "53.55"}
+            mock_build.return_value = mock.MagicMock()
+            resp = self.client.post(
+                "/dashboard/account/qb-acc-1/apply/",
+                {
+                    "month": "2026-06",
+                    "realm_id": "realm-a",
+                    "suggestion_ids": ["sug-1"],
+                    "dry_run": "false",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bank Balances")
+        mock_apply.assert_called_once()
+        mock_sync.assert_called_once()
+
+    def test_apply_without_confirmation_is_preview(self) -> None:
+        from core.models import Transaction, SourceType
+
+        balance = self._setup_account_and_balance()
+        Transaction.objects.create(
+            company=balance.company,
+            date=dt.date(2026, 6, 15),
+            vendor="Acme",
+            amount=Decimal("568.38"),
+            gl_account="Operating Checking",
+            qb_transaction_id="QB-1",
+            source_type=SourceType.PURCHASE,
+            realm_id="realm-a",
+        )
+
+        with mock.patch("core.views.qb_writes.apply_suggestion") as mock_apply:
+            resp = self.client.post(
+                "/dashboard/account/qb-acc-1/apply/",
+                {
+                    "month": "2026-06",
+                    "realm_id": "realm-a",
+                    "suggestion_ids": ["sug-1"],
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Preview")
+        mock_apply.assert_not_called()

@@ -1,0 +1,56 @@
+<form id="reconcile-suggestions-form"
+      hx-post="{% url 'core:reconcile_account_apply' qb_account_id %}"
+      hx-target="#reconcile-account-modal"
+      hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+
+    {% if preview %}
+        <h3>Preview</h3>
+        {% if preview_objects %}
+            <ul class="preview-list">
+                {% for obj in preview_objects %}
+                    <li>{{ obj.object_type }}: {{ obj.description }} ({{ obj.amount }})</li>
+                {% endfor %}
+            </ul>
+            <div class="modal-actions">
+                <button type="submit" name="dry_run" value="false" class="btn primary">Apply to QuickBooks</button>
+                <button type="button" class="btn" onclick="document.getElementById('reconcile-account-modal').remove()">Cancel</button>
+            </div>
+        {% else %}
+            <p class="empty-state">No suggestions selected.</p>
+        {% endif %}
+    {% else %}
+        <h3>Suggested fixes</h3>
+        {% if suggestions %}
+            <div class="suggestion-cards">
+                {% for suggestion in suggestions %}
+                    <div class="suggestion-card">
+                        <label class="suggestion-select">
+                            <input type="checkbox" name="suggestion_ids" value="{{ suggestion.id }}">
+                            <span class="suggestion-title">{{ suggestion.description }}</span>
+                        </label>
+                        <div class="suggestion-meta">
+                            <span class="suggestion-amount">${{ suggestion.amount }}</span>
+                            <span class="suggestion-type {{ suggestion.confidence }}">{{ suggestion.type }} · {{ suggestion.confidence }}</span>
+                        </div>
+                        <div class="suggestion-lines">
+                            {% for line in suggestion.lines %}
+                                <div class="suggestion-line">
+                                    {{ line.posting }} {{ line.account_name }} ${{ line.amount }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="modal-actions">
+                <button type="submit" name="dry_run" value="true" class="btn">Preview selected</button>
+                <button type="button" class="btn" onclick="document.getElementById('reconcile-account-modal').remove()">Cancel</button>
+            </div>
+        {% else %}
+            <p class="empty-state">No suggested fixes for this account.</p>
+        {% endif %}
+    {% endif %}
+</form>

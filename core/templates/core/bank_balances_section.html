@@ -19,6 +19,13 @@
                         </div>
                     </div>
                     <div class="ledger-row-meta">
+                        {% if not item.is_reconciled %}
+                            <button class="btn small"
+                                    hx-get="{% url 'core:reconcile_account_suggest' item.qb_account_id %}"
+                                    hx-vals='{"month": "{{ month }}", "realm_id": "{{ realm_id|default:"" }}"}'
+                                    hx-target="#reconcile-account-modal-container"
+                                    hx-swap="innerHTML">Reconcile</button>
+                        {% endif %}
                         <span class="status-label {{ item.is_reconciled|yesno:"confirmed,flag" }}">
                             {{ item.is_reconciled|yesno:"Reconciled,Unreconciled" }}
                         </span>

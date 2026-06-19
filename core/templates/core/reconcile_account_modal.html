@@ -1,0 +1,34 @@
+<div id="reconcile-account-modal" class="modal-overlay">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reconcile-modal-title">
+        <div class="modal-header">
+            <h2 id="reconcile-modal-title">Reconcile {{ account_name }}</h2>
+            <span class="environment-badge {{ environment }}">{{ environment|title }}</span>
+            <button class="modal-close" aria-label="Close" onclick="document.getElementById('reconcile-account-modal').remove()">×</button>
+        </div>
+
+        <div class="modal-body">
+            <div class="account-summary">
+                <div class="summary-row">
+                    <span class="summary-label">Statement balance</span>
+                    <span class="summary-value">${{ statement_balance|floatformat:2 }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Posted GL total</span>
+                    <span class="summary-value">${{ posted_total|floatformat:2 }}</span>
+                </div>
+                {% if qb_current_balance %}
+                    <div class="summary-row">
+                        <span class="summary-label">QB current balance</span>
+                        <span class="summary-value">${{ qb_current_balance|floatformat:2 }}</span>
+                    </div>
+                {% endif %}
+                <div class="summary-row total">
+                    <span class="summary-label">Difference</span>
+                    <span class="summary-value">${{ difference|floatformat:2 }}</span>
+                </div>
+            </div>
+
+            {% include "core/account_suggestions.html" %}
+        </div>
+    </div>
+</div>

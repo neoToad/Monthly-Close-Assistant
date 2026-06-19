@@ -29,26 +29,206 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
+from core.agent import reconcile as reconcile_agent
 from core.agent.summary import draft_close_summary
 from core.anomaly.rules import run_anomaly_detection
 from core.models import (
+    AccountReconciliationState,
     BankStatementBalance,
     CloseSummary,
     CloseSummaryStatus,
     Flag,
     FlagStatus,
+    FlagType,
     QBAccount,
     QuickBooksCompany,
+    ReconciliationStatus,
     Transaction,
 )
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
+from core.quickbooks import writes as qb_writes
 from core.reconciliation.engine import BALANCE_TOLERANCE, run_reconciliation
 
 logger = logging.getLogger(__name__)
 
 #: QuickBooks account types treated as cash or cash-like for bank reconciliation.
 CASH_LIKE_ACCOUNT_TYPES = {"Bank", "Other Current Asset"}
+
+
+@login_required
+@require_http_methods(["GET"])
+def reconcile_account_suggest(request, qb_account_id: str):
+    """Show the reconcile-account modal with AI-generated suggestions."""
+    month = request.GET.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = request.GET.get("realm_id") or _default_realm_id() or ""
+
+    try:
+        _month_bounds(month)
+    except (ValueError, IndexError):
+        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
+
+    qb_api_client: Any | None = None
+    token = qb_tokens.get_active_token(realm_id=realm_id)
+    if token is not None:
+        try:
+            qb_api_client = qb_client.build_quickbooks_client(token)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not build QB client for suggestions: %s", exc)
+
+    suggestions_result = reconcile_agent.suggest_account_fixes(
+        month, realm_id, qb_account_id, qb_api_client=qb_api_client
+    )
+    inputs = reconcile_agent.gather_account_inputs(
+        month, realm_id, qb_account_id, qb_api_client=qb_api_client
+    )
+
+    context = {
+        "month": month,
+        "realm_id": realm_id,
+        "qb_account_id": qb_account_id,
+        "account_name": suggestions_result["account_name"],
+        "statement_balance": suggestions_result["statement_balance"] or Decimal("0"),
+        "posted_total": suggestions_result["posted_total"],
+        "difference": suggestions_result["difference"] or Decimal("0"),
+        "qb_current_balance": Decimal(inputs.get("qb_current_balance") or 0),
+        "suggestions": suggestions_result["suggestions"],
+        "unmatched_bank": inputs["unmatched_bank"],
+        "unmatched_gl": inputs["unmatched_gl"],
+        "matched_differences": inputs["matched_differences"],
+        "environment": qb_client.get_environment(),
+        "preview": False,
+    }
+    return render(request, "core/reconcile_account_modal.html", context)
+
+
+@login_required
+@require_POST
+def reconcile_account_apply(request, qb_account_id: str):
+    """Preview or apply selected reconciliation suggestions to QuickBooks."""
+    month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = request.POST.get("realm_id") or _default_realm_id() or ""
+    suggestion_ids = request.POST.getlist("suggestion_ids")
+    dry_run = request.POST.get("dry_run", "true").lower() not in ("false", "0", "")
+
+    try:
+        _month_bounds(month)
+    except (ValueError, IndexError):
+        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
+
+    suggestions_result = reconcile_agent.suggest_account_fixes(
+        month, realm_id, qb_account_id
+    )
+    all_suggestions = suggestions_result["suggestions"]
+    selected = [s for s in all_suggestions if s.get("id") in suggestion_ids]
+
+    if dry_run or not selected:
+        preview_objects = [
+            {
+                "object_type": s["type"].replace("_", " ").title(),
+                "description": s.get("description", ""),
+                "amount": s.get("amount", ""),
+            }
+            for s in selected
+        ]
+        context = {
+            "month": month,
+            "realm_id": realm_id,
+            "qb_account_id": qb_account_id,
+            "account_name": suggestions_result["account_name"],
+            "statement_balance": suggestions_result["statement_balance"] or Decimal("0"),
+            "posted_total": suggestions_result["posted_total"],
+            "difference": suggestions_result["difference"] or Decimal("0"),
+            "suggestions": all_suggestions,
+            "preview": True,
+            "preview_objects": preview_objects,
+            "environment": qb_client.get_environment(),
+        }
+        return render(request, "core/reconcile_account_modal.html", context)
+
+    # Confirmation path: require an active QB token.
+    token = qb_tokens.get_active_token(realm_id=realm_id)
+    if token is None:
+        context = _bank_balances_context(month, realm_id=realm_id)
+        context["month"] = month
+        context["notice"] = "QuickBooks is not connected. Please connect QuickBooks first."
+        return render(request, "core/bank_balances_section.html", context)
+
+    try:
+        qb = qb_client.build_quickbooks_client(token)
+    except Exception as exc:  # noqa: BLE001
+        context = _bank_balances_context(month, realm_id=realm_id)
+        context["month"] = month
+        context["notice"] = f"Could not build QuickBooks client: {exc}"
+        return render(request, "core/bank_balances_section.html", context)
+
+    created_objects: list[dict] = []
+    try:
+        for suggestion in selected:
+            created = qb_writes.apply_suggestion(
+                qb,
+                suggestion,
+                realm_id=realm_id,
+                private_note=f"AI-assisted reconciliation for {month} — {suggestion.get('description', '')}",
+            )
+            created_objects.append(created)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("apply_suggestion failed for %s/%s", realm_id, qb_account_id)
+        context = _bank_balances_context(month, realm_id=realm_id)
+        context["month"] = month
+        context["notice"] = f"QuickBooks write failed: {exc}"
+        return render(request, "core/bank_balances_section.html", context)
+
+    # Pull the new transactions into the local DB and re-check balances.
+    try:
+        qb_client.sync_transactions(qb, qb_token=token, realm_id=realm_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Post-apply sync failed for %s/%s: %s", realm_id, qb_account_id, exc)
+    run_reconciliation(month, realm_id=realm_id)
+
+    # Record applied suggestion ids on the reconciliation state.
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    try:
+        state = AccountReconciliationState.objects.get(
+            company=company, qb_account_id=qb_account_id, month=month
+        )
+        applied = set(state.applied_suggestions or [])
+        applied.update(suggestion_ids)
+        state.applied_suggestions = list(applied)
+        if state.difference and abs(state.difference) <= BALANCE_TOLERANCE:
+            state.status = ReconciliationStatus.RECONCILED
+        else:
+            state.status = ReconciliationStatus.IN_PROGRESS
+        state.save(update_fields=["applied_suggestions", "status"])
+    except AccountReconciliationState.DoesNotExist:
+        pass
+
+    # Update the balance-reconciliation flag audit note.
+    try:
+        balance = BankStatementBalance.objects.get(
+            company=company, qb_account_id=qb_account_id, month=month
+        )
+        flag = Flag.objects.filter(
+            bank_statement_balance=balance,
+            flag_type=FlagType.BALANCE_RECONCILIATION,
+            status=FlagStatus.OPEN,
+        ).first()
+        if flag:
+            flag.notes = (
+                f"Created {len(created_objects)} QuickBooks object(s): "
+                + ", ".join(f"{obj['object_type']} {obj['id']}" for obj in created_objects)
+                + "."
+            )
+            flag.save(update_fields=["notes"])
+    except BankStatementBalance.DoesNotExist:
+        pass
+
+    context = _bank_balances_context(month, realm_id=realm_id)
+    context["month"] = month
+    context["notice"] = (
+        f"Applied {len(created_objects)} adjustment(s) to QuickBooks for {suggestions_result['account_name']}."
+    )
+    return render(request, "core/bank_balances_section.html", context)
 
 
 @require_http_methods(["GET"])
@@ -151,6 +331,7 @@ def _bank_balances_context(month: str, realm_id: Optional[str] = None) -> dict[s
         snapshots.append(
             {
                 "account_name": balance.account_name,
+                "qb_account_id": balance.qb_account_id,
                 "bank_balance": balance.ending_balance,
                 "posted_total": posted_total,
                 "difference": difference,
