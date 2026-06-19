@@ -6,7 +6,7 @@ Implementing `docs/plans/ai_assisted_account_reconciliation_plan.md`.
 
 ## Current task
 
-Step 6: update README, CHANGELOG, TODO; run full test suite in Docker; commit.
+Done — plan `docs/plans/ai_assisted_account_reconciliation_plan.md` implemented.
 
 ## Branch
 
@@ -14,4 +14,4 @@ Step 6: update README, CHANGELOG, TODO; run full test suite in Docker; commit.
 
 ## Latest commit
 
-Step 5 commands implemented and tested (not yet committed).
+Docs and TODO updated; full suite passes 265 tests.

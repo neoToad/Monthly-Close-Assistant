@@ -18,6 +18,12 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
   and date within 1 day; creates `Flag` records for mismatches and unmatched rows.
   Also performs account-level balance reconciliation by comparing stored bank
   statement balances to posted GL totals for each cash account.
+- **AI-assisted account reconciliation** — for each unreconciled cash account, the
+  assistant proposes explainable adjusting entries (Purchase / Deposit / JournalEntry)
+  that close the bank-to-GL gap. Suggestions default to a deterministic fallback, with
+  optional LLM enhancement via Anthropic or OpenAI when API keys are configured.
+  A reviewer previews each proposal in a modal, confirms, and the app writes real
+  QuickBooks objects, re-syncs, and refreshes the dashboard.
 - **Anomaly detection** — rule-based checks for vendor amount z-scores, duplicate
   transactions within 7 days, new vendors, and category month-over-month jumps > 200%.
 - **Close-summary agent** — LangGraph/LangChain-Anthropic agent that drafts a
@@ -136,7 +142,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **232 tests pass**.
+The latest full-suite result: **265 tests pass**.
 
 ## Required environment variables
 
@@ -172,6 +178,8 @@ See `.env.example` for the full list and comments.
 | `python manage.py generate_close_summary YYYY-MM` | Drafts a close summary for the month; use `--realm-id` to scope to one realm. Cross-checks against the QuickBooks GeneralLedger report when a client is available. |
 | `python manage.py set_bank_balance YYYY-MM --realm-id <id> --account-id <id> --balance <amount>` | Manually set the ending bank balance for a cash account and month. Used by the balance-reconciliation check. |
 | `python manage.py seed_bank_balances YYYY-MM --realm-id <id>` | *(Sandbox convenience)* Pull current account balances from QuickBooks and seed `BankStatementBalance` rows for cash-like accounts. Use `--force` to overwrite. |
+| `python manage.py suggest_account_fixes YYYY-MM --account-id <id> --realm-id <id>` | Generate adjusting-entry suggestions for a single cash account. Prints a dry-run list; add `--apply` to execute the highest-confidence tier in QuickBooks. |
+| `python manage.py apply_account_fix YYYY-MM --account-id <id> --suggestion-id <id> --realm-id <id>` | Preview a single suggestion; add `--apply` to write it to QuickBooks. |
 
 To pull real QuickBooks data, connect your app via `/quickbooks/oauth/start/` and then
 sync from the dashboard or run `python manage.py sync_quickbooks`.
@@ -186,7 +194,8 @@ The review dashboard lives at `/dashboard/` and requires authentication. It show
 - A month selector that HTMX-swaps the dashboard content.
 - A **Bank Balances** panel listing each cash account's stored statement balance and
   posted GL total, highlighting any unreconciled gaps. Use the inline form to set a
-  balance manually.
+  balance manually, or click **Reconcile** to open the AI-assisted reconciliation
+  modal, preview proposed adjusting entries, and confirm writes to QuickBooks.
 - All open flags for the selected company and month with Approve / Reject actions.
   Balance-reconciliation flags are styled with a "Balance" badge.
 - The current close summary and a form to mark it reviewed with notes.

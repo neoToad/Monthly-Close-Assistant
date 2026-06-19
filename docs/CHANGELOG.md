@@ -3,6 +3,33 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(reconcile): implement AI-assisted account reconciliation workflow
+
+- Added `AccountReconciliationState` model keyed on `(company, qb_account_id, month)`
+  with `ReconciliationStatus` choices, statement/posted/difference totals,
+  `last_suggestions`, and `applied_suggestions` for idempotency.
+- Added `Flag.notes` text field so balance-reconciliation flags can carry an audit
+  trail of applied QuickBooks objects.
+- Implemented `core/agent/reconcile.py::suggest_account_fixes()` with deterministic
+  fallback suggestions for bank-only rows and residual gaps, plus optional Anthropic
+  / OpenAI LLM enhancement via `langchain_anthropic` / `langchain_openai`.
+- Added `core/quickbooks/writes.py` wrappers for `JournalEntry`, `Purchase`, and
+  `Deposit` creation that map local `QBAccount` names to QuickBooks `AccountRef`
+  objects.
+- Added dashboard views (`reconcile_account_suggest`, `reconcile_account_apply`) with
+  a confirmation-token safety model: dry-run preview first, then live QB writes only
+  after explicit confirmation; post-write sync, reconciliation rerun, and dashboard
+  partial swap.
+- Added `core/templates/core/reconcile_account_modal.html`,
+  `core/templates/core/account_suggestions.html`, and updated
+  `bank_balances_section.html` / `dashboard_content.html` with HTMX-driven modal and
+  reconcile button styling.
+- Added `suggest_account_fixes` and `apply_account_fix` management commands with
+  dry-run-by-default behavior and focused tests in
+  `core/tests/test_reconcile_commands.py`.
+- Added model, agent, QB write, view, and command tests; full suite now passes
+  **265 tests**.
+
 ## feat(models): attach all realm-scoped models to QuickBooksCompany
 
 - Added a `company` foreign key from `Transaction`, `BankTransaction`, `Flag`,

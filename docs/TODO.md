@@ -19,3 +19,13 @@
 - ✅ Integrate balance check into `run_reconciliation` and add tests.
 - ✅ Expose bank balances on the dashboard with inline set-balance form.
 - ✅ Update README and CHANGELOG.
+
+## AI-assisted account reconciliation
+
+- ✅ Add `AccountReconciliationState` model and `ReconciliationStatus` choices.
+- ✅ Add deterministic account-level suggestion engine with optional LLM path.
+- ✅ Add QuickBooks write wrappers for JournalEntry / Purchase / Deposit.
+- ✅ Add reconcile-account modal, preview, confirmation, and dashboard integration.
+- ✅ Add `suggest_account_fixes` and `apply_account_fix` management commands.
+- ✅ Add model, agent, write, view, and command tests.
+- ✅ Update README, CHANGELOG, and TODO.
