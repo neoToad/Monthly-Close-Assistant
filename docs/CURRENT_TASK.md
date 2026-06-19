@@ -2,11 +2,11 @@
 
 ## Stage
 
-Fix QuickBooks sync regression after removing dummy data.
+Add configurable LLM provider for the close-summary agent.
 
 ## Current task
 
-**Complete.** Fixed `pull_raw_records` in `core/quickbooks/client.py` so the QuickBooks client is passed to `model.all(qb=...)` correctly. Added a regression test in `core/tests/test_quickbooks.py`. Full suite: 148 tests pass.
+**Complete.** The close-summary agent now supports Anthropic (default) and any OpenAI-compatible provider (e.g. Ollama Cloud). Added `CLOSE_SUMMARY_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `CLOSE_SUMMARY_MODEL` env vars. Added `langchain-openai` dependency and tests. Full suite: 151 tests pass.
 
 ## Branch
 
@@ -14,4 +14,4 @@ Fix QuickBooks sync regression after removing dummy data.
 
 ## Next step
 
-Commit the fix and push to `feature/close-assistant-build`.
+Commit the changes and push to `feature/close-assistant-build`.

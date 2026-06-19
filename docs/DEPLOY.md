@@ -39,10 +39,12 @@ Set these in the Railway service variables panel:
 | `QB_CLIENT_ID` | From Intuit developer dashboard | OAuth 2.0 client ID. |
 | `QB_CLIENT_SECRET` | From Intuit developer dashboard | OAuth 2.0 secret. |
 | `QB_REDIRECT_URI` | `https://<your-domain>/quickbooks/oauth/callback/` | Must be registered in Intuit. |
-| `QB_SANDBOX_COMPANY_ID` | QuickBooks realm id | For sandbox pulls. |
 | `QB_TOKEN_ENCRYPTION_KEY` | Fernet key generated locally | Encrypts tokens at rest. |
-| `ANTHROPIC_API_KEY` | From Anthropic console | Optional; omit to use deterministic summaries. |
-| `CLOSE_SUMMARY_MODEL` | e.g. `claude-sonnet-4-6` | Optional model override. |
+| `CLOSE_SUMMARY_PROVIDER` | `anthropic` or `openai` | Defaults to `anthropic`. |
+| `ANTHROPIC_API_KEY` | From Anthropic console | Used when provider is `anthropic`; omit to use deterministic summaries. |
+| `OPENAI_API_KEY` | From Ollama Cloud / OpenAI-compatible provider | Used when provider is `openai`. |
+| `OPENAI_BASE_URL` | e.g. `https://ollama.com/v1` | Base URL for OpenAI-compatible API. |
+| `CLOSE_SUMMARY_MODEL` | e.g. `claude-sonnet-4-6` or `qwen3.5:cloud` | Optional model override. |
 
 ### 4. Start the web service
 

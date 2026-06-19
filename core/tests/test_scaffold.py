@@ -98,9 +98,13 @@ class EnvExampleTests(SimpleTestCase):
             "QB_CLIENT_ID",
             "QB_CLIENT_SECRET",
             "QB_REDIRECT_URI",
-            "QB_SANDBOX_COMPANY_ID",
             "QB_ENVIRONMENT",
             "QB_TOKEN_REFRESH_BUFFER_MINUTES",
             "QB_TOKEN_ENCRYPTION_KEY",
+            "CLOSE_SUMMARY_PROVIDER",
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "CLOSE_SUMMARY_MODEL",
         ):
             self.assertIn(var, env_example, f"{var} missing from .env.example")

@@ -993,6 +993,38 @@ reconciliation, anomaly, and summary tests continue to pass.
 
 ---
 
+## Configurable LLM provider — `feat(agent): support OpenAI-compatible providers for close summaries`
+
+Added support for using an OpenAI-compatible LLM API (e.g. Ollama Cloud) for the
+close-summary agent, in addition to the existing Anthropic/Claude path.
+
+- Updated `core/agent/summary.py`:
+  - New `_get_summary_provider()` helper reads `CLOSE_SUMMARY_PROVIDER`
+    (`anthropic` or `openai`; defaults to `anthropic`).
+  - Split `_call_llm()` into provider-specific `_call_anthropic_llm()` and
+    `_call_openai_llm()` paths.
+  - `_call_openai_llm()` uses `langchain_openai.ChatOpenAI` with `OPENAI_API_KEY`
+    and optional `OPENAI_BASE_URL`.
+- Added `langchain-openai==1.3.2` to `requirements.txt` (compatible with the
+  existing `langchain==1.3.9` / `langgraph==1.2.5` stack).
+- Updated `.env.example` with the new variables:
+  `CLOSE_SUMMARY_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`.
+- Updated `README.md` and `docs/DEPLOY.md` env-var tables.
+- Updated `core/tests/test_scaffold.py` to expect the new env vars.
+- Added `LLMProviderSelectionTests` in `core/tests/test_agent.py` covering the
+  default Anthropic path, the OpenAI provider switch, and the Ollama Cloud
+  model/base_url configuration.
+- Removed `QB_SANDBOX_COMPANY_ID` from `.env.example` and the scaffold test as
+  part of this cleanup pass; the OAuth callback provides the real `realm_id`.
+- Full suite: **151 tests pass**.
+
+**TDD:** wrote `LLMProviderSelectionTests` first, confirmed they failed before
+implementation, then implemented to green.
+
+**Deviations:** None.
+
+---
+
 ## Fix QB sync regression — `fix(core): pull_raw_records argument order`
 
 Fixed a regression in `core/quickbooks/client.py` that caused live QuickBooks sync

@@ -7,9 +7,14 @@ Builds a plain-language close summary from:
 * Category totals for the prior month, for month-over-month context.
 
 The agent is implemented as a single-node LangGraph graph whose node calls a
-Claude model via LangChain-Anthropic when ``ANTHROPIC_API_KEY`` is configured.
-If the key is absent, the node falls back to a deterministic, human-readable
-summary so local development and tests do not require live API access.
+configurable LLM provider. Supported providers:
+
+* ``anthropic`` (default) — uses LangChain-Anthropic / Claude models.
+* ``openai`` — uses any OpenAI-compatible API, such as Ollama Cloud.
+
+If no provider is configured or the API key is absent, the node falls back to a
+deterministic, human-readable summary so local development and tests do not
+require live API access.
 """
 from __future__ import annotations
 
@@ -176,16 +181,34 @@ def _deterministic_summary(inputs: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _get_summary_provider() -> str:
+    """Return the configured close-summary provider (``anthropic`` or ``openai``)."""
+    provider = config("CLOSE_SUMMARY_PROVIDER", default="anthropic").strip().lower()
+    if provider not in ("anthropic", "openai"):
+        logger.warning("Unknown CLOSE_SUMMARY_PROVIDER %r; using anthropic.", provider)
+        return "anthropic"
+    return provider
+
+
 def _call_llm(prompt: str, llm: Optional[Any] = None) -> str:
     """Invoke the configured LLM, or fall back to the deterministic summary."""
     if llm is not None:
         return llm.invoke(prompt).content
 
+    provider = _get_summary_provider()
+    model_name = config("CLOSE_SUMMARY_MODEL", default="claude-sonnet-4-6")
+
+    if provider == "openai":
+        return _call_openai_llm(prompt, model_name)
+
+    return _call_anthropic_llm(prompt, model_name)
+
+
+def _call_anthropic_llm(prompt: str, model_name: str) -> str | None:
+    """Call an Anthropic model via LangChain-Anthropic."""
     api_key = config("ANTHROPIC_API_KEY", default="")
     if not api_key:
-        logger.info(
-            "ANTHROPIC_API_KEY is not configured; using deterministic close summary."
-        )
+        logger.info("ANTHROPIC_API_KEY is not configured; using deterministic close summary.")
         return None
 
     try:
@@ -195,8 +218,34 @@ def _call_llm(prompt: str, llm: Optional[Any] = None) -> str:
         logger.warning("Agent dependencies not installed: %s. Using fallback.", exc)
         return None
 
-    model_name = config("CLOSE_SUMMARY_MODEL", default="claude-sonnet-4-6")
     chat = ChatAnthropic(model=model_name, api_key=api_key)
+    template = ChatPromptTemplate.from_messages(
+        [("system", _SYSTEM_PROMPT), ("human", "{prompt}")]
+    )
+    chain = template | chat
+    return chain.invoke({"prompt": prompt}).content
+
+
+def _call_openai_llm(prompt: str, model_name: str) -> str | None:
+    """Call an OpenAI-compatible model (e.g. Ollama Cloud) via LangChain-OpenAI."""
+    api_key = config("OPENAI_API_KEY", default="")
+    if not api_key:
+        logger.info("OPENAI_API_KEY is not configured; using deterministic close summary.")
+        return None
+
+    try:
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_openai import ChatOpenAI
+    except ImportError as exc:  # pragma: no cover
+        logger.warning("OpenAI dependencies not installed: %s. Using fallback.", exc)
+        return None
+
+    base_url = config("OPENAI_BASE_URL", default="")
+    chat_kwargs: dict[str, Any] = {"model": model_name, "api_key": api_key}
+    if base_url:
+        chat_kwargs["base_url"] = base_url
+
+    chat = ChatOpenAI(**chat_kwargs)
     template = ChatPromptTemplate.from_messages(
         [("system", _SYSTEM_PROMPT), ("human", "{prompt}")]
     )

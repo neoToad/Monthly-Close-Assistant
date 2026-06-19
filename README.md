@@ -144,12 +144,14 @@ The latest full-suite result: **114 tests pass**.
 | `QB_CLIENT_ID` | QuickBooks OAuth client ID. |
 | `QB_CLIENT_SECRET` | QuickBooks OAuth client secret. |
 | `QB_REDIRECT_URI` | Must match a URI registered in the Intuit dashboard. |
-| `QB_SANDBOX_COMPANY_ID` | QuickBooks sandbox realm/company id. |
 | `QB_ENVIRONMENT` | `sandbox` or `production`. |
 | `QB_TOKEN_ENCRYPTION_KEY` | Fernet key for encrypting tokens at rest. |
 | `QB_TOKEN_REFRESH_BUFFER_MINUTES` | Minutes before expiry to refresh proactively. |
-| `ANTHROPIC_API_KEY` | Optional; enables LLM-drafted close summaries. |
-| `CLOSE_SUMMARY_MODEL` | Optional Claude model override. |
+| `CLOSE_SUMMARY_PROVIDER` | `anthropic` (default) or `openai` for OpenAI-compatible APIs. |
+| `ANTHROPIC_API_KEY` | Optional; enables Claude-drafted close summaries. |
+| `OPENAI_API_KEY` | Optional; used when `CLOSE_SUMMARY_PROVIDER=openai` (e.g. Ollama Cloud). |
+| `OPENAI_BASE_URL` | Optional; base URL for an OpenAI-compatible API. |
+| `CLOSE_SUMMARY_MODEL` | Optional model override (e.g. `qwen3.5:cloud`). |
 
 See `.env.example` for the full list and comments.
 

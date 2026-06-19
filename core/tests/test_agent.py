@@ -1,7 +1,7 @@
 """Tests for the close-summary agent (Prompt 10).
 
-The agent is exercised against a deterministic fallback (no live Anthropic API
-calls in tests). A fake LLM client is also used to verify the LangChain/LangGraph
+The agent is exercised against a deterministic fallback (no live API calls in
+tests). A fake LLM client is also used to verify the LangChain/LangGraph
 integration path.
 """
 from __future__ import annotations
@@ -94,3 +94,63 @@ class DraftCloseSummaryTests(TestCase):
         summary = draft_close_summary("2025-01", llm=fake_llm)
         self.assertIn("AI-generated summary.", summary.summary_text)
         fake_llm.invoke.assert_called_once()
+
+
+class LLMProviderSelectionTests(TestCase):
+    def test_anthropic_path_used_by_default(self) -> None:
+        from core.agent.summary import _call_llm
+
+        with mock.patch("core.agent.summary._call_anthropic_llm") as mock_anthropic, \
+             mock.patch("core.agent.summary._call_openai_llm") as mock_openai:
+            mock_anthropic.return_value = "anthropic summary"
+            result = _call_llm("test prompt")
+
+        self.assertEqual(result, "anthropic summary")
+        mock_anthropic.assert_called_once_with("test prompt", "claude-sonnet-4-6")
+        mock_openai.assert_not_called()
+
+    def test_openai_path_used_when_provider_is_openai(self) -> None:
+        from core.agent.summary import _call_llm
+
+        config_values = {
+            "CLOSE_SUMMARY_PROVIDER": "openai",
+            "CLOSE_SUMMARY_MODEL": "qwen3.5:cloud",
+        }
+
+        with mock.patch("core.agent.summary._call_anthropic_llm") as mock_anthropic, \
+             mock.patch("core.agent.summary._call_openai_llm") as mock_openai, \
+             mock.patch(
+                 "core.agent.summary.config",
+                 side_effect=lambda key, default="": config_values.get(key, default),
+             ):
+            mock_openai.return_value = "openai summary"
+            result = _call_llm("test prompt")
+
+        self.assertEqual(result, "openai summary")
+        mock_openai.assert_called_once_with("test prompt", "qwen3.5:cloud")
+        mock_anthropic.assert_not_called()
+
+    def test_openai_path_uses_configured_model_and_base_url(self) -> None:
+        """The OpenAI-compatible client is instantiated with the configured model,
+        API key, and base URL.
+        """
+        from core.agent.summary import _call_openai_llm
+
+        config_values = {
+            "OPENAI_API_KEY": "fake-key",
+            "OPENAI_BASE_URL": "https://ollama.com/v1",
+        }
+
+        with mock.patch(
+            "core.agent.summary.config",
+            side_effect=lambda key, default="": config_values.get(key, default),
+        ), mock.patch("langchain_openai.ChatOpenAI") as mock_chat_cls:
+            mock_chat_cls.return_value = mock.MagicMock()
+
+            _call_openai_llm("test prompt", "qwen3.5:cloud")
+
+        mock_chat_cls.assert_called_once_with(
+            model="qwen3.5:cloud",
+            api_key="fake-key",
+            base_url="https://ollama.com/v1",
+        )
