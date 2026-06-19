@@ -6,7 +6,7 @@ Implementing `docs/plans/ai_assisted_account_reconciliation_plan.md`.
 
 ## Current task
 
-Step 4: add reconcile-account modal views, URLs, templates, and UI tests.
+Step 6: update README, CHANGELOG, TODO; run full test suite in Docker; commit.
 
 ## Branch
 
@@ -14,4 +14,4 @@ Step 4: add reconcile-account modal views, URLs, templates, and UI tests.
 
 ## Latest commit
 
-`69ce407` — docs: restore long-horizon prompt files removed in previous commit.
+Step 5 commands implemented and tested (not yet committed).
