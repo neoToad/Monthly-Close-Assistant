@@ -30,8 +30,8 @@
 - [x] Extend `SYNC_OBJECTS` and `normalize_record` for the three AP types
 - [x] Add `sync_accounts` helper and wire into `sync_quickbooks`
 - [x] Print per-type counts for new transaction sources
-- [ ] Add normalization, account sync, and sync-command tests
-- [ ] Add realm-isolation tests for `QBAccount`
+- [x] Add normalization, account sync, and sync-command tests
+- [x] Add realm-isolation tests for `QBAccount`
 - [ ] Scope bank feed to cash-like transaction types with `--cash-only`
 - [ ] Add `fetch_general_ledger_summary` and include in close-summary inputs
 - [ ] Update README and project docs

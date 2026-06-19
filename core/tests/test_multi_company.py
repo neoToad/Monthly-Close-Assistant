@@ -24,6 +24,7 @@ from core.models import (
     CloseSummary,
     Flag,
     FlagType,
+    QBAccount,
     QBToken,
     QuickBooksCompany,
     Severity,
@@ -190,6 +191,38 @@ class RealmIsolationCloseSummaryTests(TestCase):
         self.assertIn("Software", summary.summary_text)
         self.assertEqual(CloseSummary.objects.filter(realm_id="realm-a").count(), 1)
         self.assertEqual(CloseSummary.objects.filter(realm_id="realm-b").count(), 0)
+
+
+class RealmIsolationQBAccountTests(TestCase):
+    def test_sync_accounts_scopes_by_realm(self) -> None:
+        QBAccount.objects.create(realm_id="realm-a", account_id="acc-1", name="Checking")
+        QBAccount.objects.create(realm_id="realm-b", account_id="acc-1", name="Savings")
+
+        self.assertEqual(
+            QBAccount.objects.filter(realm_id="realm-a", account_id="acc-1").count(), 1
+        )
+        realm_a_account = QBAccount.objects.get(realm_id="realm-a", account_id="acc-1")
+        self.assertEqual(realm_a_account.name, "Checking")
+        realm_b_account = QBAccount.objects.get(realm_id="realm-b", account_id="acc-1")
+        self.assertEqual(realm_b_account.name, "Savings")
+
+    @mock.patch.object(qb_client.Account, "all")
+    def test_sync_accounts_only_updates_target_realm(self, mock_all) -> None:
+        QBAccount.objects.create(realm_id="realm-a", account_id="acc-1", name="Old")
+        QBAccount.objects.create(realm_id="realm-b", account_id="acc-1", name="Untouched")
+
+        mock_all.return_value = [
+            SimpleNamespace(
+                Id="acc-1", Name="Checking", AccountType="Bank",
+                AccountSubType="Checking", Active=True,
+            )
+        ]
+        qb_client.sync_accounts(mock.MagicMock(), realm_id="realm-a")
+
+        realm_a = QBAccount.objects.get(realm_id="realm-a", account_id="acc-1")
+        realm_b = QBAccount.objects.get(realm_id="realm-b", account_id="acc-1")
+        self.assertEqual(realm_a.name, "Checking")
+        self.assertEqual(realm_b.name, "Untouched")
 
 
 class RealmIsolationDashboardViewTests(TestCase):

@@ -6,12 +6,12 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Current step
 
-**Step 2 — Sync the new transaction types**
-- Import `Bill`, `BillPayment`, `VendorCredit` and extend `SYNC_OBJECTS`.
-- Extend `normalize_record()` for the three AP types.
-- Add `sync_accounts()` helper and wire it into `sync_quickbooks`.
-- Print per-type counts for the new transaction sources.
-- Write failing tests first, then implement.
+**Step 3 — Test coverage for normalization and account sync**
+- Add focused normalization test classes for `Bill`, `BillPayment`, `VendorCredit`.
+- Add `SyncAccountsTests` verifying upsert by `(realm_id, account_id)`.
+- Add `test_sync_command_prints_new_source_counts`.
+- Add realm-isolation tests for `QBAccount`.
+- Add `QBAccount` model tests.
 
 ## Branch
 
@@ -19,4 +19,4 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Next step
 
-Commit `feat(qb): sync Bills, BillPayments, VendorCredits, and Accounts`, then begin Step 3.
+Commit `test(qb): cover new QuickBooks normalization and account sync`, then begin Step 4.

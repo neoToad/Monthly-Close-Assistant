@@ -238,7 +238,8 @@ class NormalizeRecordTests(SimpleTestCase):
         self.assertIsNone(qb_client.normalize_record(_purchase(date=""), "Purchase"))
 
 
-    def test_bill_maps_vendor_and_first_line_account(self) -> None:
+class BillNormalizeTests(SimpleTestCase):
+    def test_maps_vendor_and_first_line_account(self) -> None:
         norm = qb_client.normalize_record(_bill(), "Bill")
         self.assertEqual(norm["qb_transaction_id"], "4")
         self.assertEqual(norm["date"], dt.date(2026, 5, 13))
@@ -247,13 +248,21 @@ class NormalizeRecordTests(SimpleTestCase):
         self.assertEqual(norm["gl_account"], "Utilities")
         self.assertEqual(norm["source_type"], "Bill")
 
-    def test_bill_falls_back_to_ap_account_when_line_empty(self) -> None:
+    def test_falls_back_to_ap_account_when_line_empty(self) -> None:
         bill = _bill(expense_account="")
         bill.Line = []
         norm = qb_client.normalize_record(bill, "Bill")
         self.assertEqual(norm["gl_account"], "Accounts Payable")
 
-    def test_bill_payment_maps_vendor_and_bank_account(self) -> None:
+    def test_unknown_vendor_when_vendor_ref_missing(self) -> None:
+        bill = _bill()
+        bill.VendorRef = None
+        norm = qb_client.normalize_record(bill, "Bill")
+        self.assertEqual(norm["vendor"], "Unknown Vendor")
+
+
+class BillPaymentNormalizeTests(SimpleTestCase):
+    def test_maps_vendor_and_bank_account(self) -> None:
         norm = qb_client.normalize_record(_bill_payment(), "BillPayment")
         self.assertEqual(norm["qb_transaction_id"], "5")
         self.assertEqual(norm["date"], dt.date(2026, 5, 14))
@@ -262,14 +271,22 @@ class NormalizeRecordTests(SimpleTestCase):
         self.assertEqual(norm["gl_account"], "Checking")
         self.assertEqual(norm["source_type"], "BillPayment")
 
-    def test_bill_payment_prefers_credit_card_when_bank_missing(self) -> None:
+    def test_prefers_credit_card_when_bank_missing(self) -> None:
         payment = _bill_payment(bank_account="")
         payment.BankAccountRef = None
         payment.CreditCardAccountRef = _ref(name="Corporate Card")
         norm = qb_client.normalize_record(payment, "BillPayment")
         self.assertEqual(norm["gl_account"], "Corporate Card")
 
-    def test_vendor_credit_maps_vendor_and_first_line_account(self) -> None:
+    def test_unknown_vendor_when_vendor_ref_missing(self) -> None:
+        payment = _bill_payment()
+        payment.VendorRef = None
+        norm = qb_client.normalize_record(payment, "BillPayment")
+        self.assertEqual(norm["vendor"], "Unknown Vendor")
+
+
+class VendorCreditNormalizeTests(SimpleTestCase):
+    def test_maps_vendor_and_first_line_account(self) -> None:
         norm = qb_client.normalize_record(_vendor_credit(), "VendorCredit")
         self.assertEqual(norm["qb_transaction_id"], "6")
         self.assertEqual(norm["date"], dt.date(2026, 5, 15))
@@ -277,6 +294,12 @@ class NormalizeRecordTests(SimpleTestCase):
         self.assertEqual(norm["vendor"], "Utility Co")
         self.assertEqual(norm["gl_account"], "Utilities")
         self.assertEqual(norm["source_type"], "VendorCredit")
+
+    def test_unknown_vendor_when_vendor_ref_missing(self) -> None:
+        credit = _vendor_credit()
+        credit.VendorRef = None
+        norm = qb_client.normalize_record(credit, "VendorCredit")
+        self.assertEqual(norm["vendor"], "Unknown Vendor")
 
 
 # ---------------------------------------------------------------------------

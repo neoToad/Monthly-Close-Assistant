@@ -25,6 +25,16 @@ commit, per the AGENTS.md workflow.
 - Updated command output to print per-type counts for all transaction source types.
 - Added tests for new normalization paths, `sync_accounts`, and sync command output.
 
+## test(qb): cover new QuickBooks normalization and account sync
+
+- Reorganized Bill/BillPayment/VendorCredit normalization tests into focused
+  `BillNormalizeTests`, `BillPaymentNormalizeTests`, and `VendorCreditNormalizeTests`
+  classes.
+- Added `SyncAccountsTests` verifying upsert behavior keyed on `(realm_id, account_id)`.
+- Added `test_sync_command_prints_new_source_counts` for Bill source counts.
+- Added `RealmIsolationQBAccountTests` for cross-realm account isolation.
+- Added missing vendor-fallback edge-case assertions for the new record types.
+
 ## feat(qb): fetch and store QuickBooks company names
 
 - Added `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`
