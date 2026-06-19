@@ -3,6 +3,23 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## docs(plans): add Step 1 audit for refactor plan
+
+- Added `docs/plans/refactor_plan.md` documenting the full Step 1 audit of the
+  `feature/close-assistant-build` branch.
+- Catalogued drift from the advertised Data Sync → Postgres → Analysis → Agent →
+  Dashboard architecture (agent layer entangled with QB writes, engine logic in
+  views, scattered realm/company resolution).
+- Listed duplicated helpers (`_month_bounds`, `_prior_month`, `CASH_LIKE_ACCOUNT_TYPES`,
+  posted-GL total computation), inconsistent naming, missing type hints and
+  docstrings, error-handling gaps, and test-coverage holes.
+- Identified dead code (`refresh_tokens`, `writes.py:_lookup_suggestion`,
+  `--skip-reports` scaffolding, unused imports) and best-practice opportunities
+  (grouped queries, retry abstraction, idempotency tests).
+- Proposed a sequenced refactor plan in Step 2, plus open questions and explicitly
+  out-of-scope items.
+- No production code changed in this step.
+
 ## feat(ui): expose Generate Bank Feed action on the dashboard
 
 - Added `generate_bank_feed_view` in `core/views.py` that calls
@@ -182,7 +199,7 @@ commit, per the AGENTS.md workflow.
   blank.
 - `core/views.py::qb_oauth_callback` now fetches and stores the company name after
   token exchange; the OAuth redirect still succeeds if the name lookup fails.
-- `core/management/commands/sync_quickbooks.py` refreshes each realm's company name
+- Updated `core/management/commands/sync_quickbooks.py` refreshes each realm's company name
   before syncing and prints the name in command output.
 - Removed the spurious `get_access_token`, `get_refresh_token`, and
   `is_access_token_expired` methods from `QuickBooksCompany` (they referenced fields

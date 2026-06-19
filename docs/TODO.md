@@ -35,3 +35,29 @@
 - ✅ Add `generate_bank_feed` management command for synthetic bank transactions.
 - ✅ Expose Generate Bank Feed action on the dashboard with force/cash-only support.
 - ✅ Add view tests for dashboard generation.
+
+## Refactor plan (`docs/plans/refactor_plan.md`)
+
+### Step 1 — Audit
+
+- ✅ Document module/package structure and conceptual-architecture drift.
+- ✅ Catalog business logic living in `core/views.py`.
+- ✅ List duplicated logic across engines (`_month_bounds`, `_prior_month`,
+  `CASH_LIKE_ACCOUNT_TYPES`, posted-GL sums, LLM plumbing, realm resolution).
+- ✅ Document inconsistent naming and thin docstrings.
+- ✅ Record type-hint and error-handling gaps.
+- ✅ Summarize test-coverage gaps, dead code, and best-practice opportunities.
+- ✅ Produce sequenced execution plan and open questions.
+
+### Step 2 — Refactor execution
+
+- ⬜ Dead code cleanup (2.7.A–F).
+- ⬜ Centralize dates and constants (2.2.C).
+- ⬜ Type hints and docstrings pass (2.4).
+- ⬜ Extract `compute_posted_total` and grouped queries (2.1.B, 2.8.A).
+- ⬜ Extract service layer for apply flow (2.1.A).
+- ⬜ Move QB write helpers to `core/services/qb_writes.py` (2.1.C).
+- ⬜ Centralize retry/backoff (2.5.A).
+- ⬜ Add missing idempotency tests (2.6).
+- ⬜ Package reorganization (2.2.A full target).
+- ⬜ Migration squash (2.8.E).
