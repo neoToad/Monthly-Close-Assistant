@@ -6,7 +6,7 @@ Implementing `docs/plans/ai_assisted_account_reconciliation_plan.md`.
 
 ## Current task
 
-Step 2: build the account-level reconciliation suggestion engine in `core/agent/reconcile.py` (TDD: tests first).
+Step 3: add QuickBooks write helpers in `core/quickbooks/writes.py` (TDD: tests first).
 
 ## Branch
 
@@ -14,4 +14,4 @@ Step 2: build the account-level reconciliation suggestion engine in `core/agent/
 
 ## Latest commit
 
-`0cd8be4` — feat(models): add AccountReconciliationState and Flag.notes for reconciliation workflow.
+`71b6766` — feat(agent): add account-level reconciliation suggestion engine.
