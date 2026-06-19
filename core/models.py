@@ -66,6 +66,72 @@ class QBAccount(models.Model):
         return f"{self.name} ({self.account_type or 'Unknown'})"
 
 
+class BankStatementBalance(models.Model):
+    """The ending balance on a bank statement for a cash account in a month.
+
+    This is the control side of a balance-level reconciliation. In production the
+    balance comes from a statement upload or manual entry; in sandbox it can be
+    auto-seeded from QuickBooks. The assistant compares this ending balance to the
+    sum of GL activity hitting the same account name and raises a
+    ``BALANCE_RECONCILIATION`` flag when they differ.
+    """
+
+    class Source(models.TextChoices):
+        """How the balance value entered the system."""
+
+        QB_API = "qb_api", "QuickBooks API"
+        MANUAL = "manual", "Manual entry"
+        CSV_UPLOAD = "csv_upload", "CSV upload"
+        BANK_FEED = "bank_feed", "Bank feed"
+
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this balance belongs to.",
+    )
+    qb_account_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks account id (natural key scoped by realm).",
+    )
+    account_name = models.CharField(
+        max_length=200,
+        help_text="Account name as shown in QuickBooks; used to match GL transactions.",
+    )
+    month = models.CharField(
+        max_length=7,
+        validators=[RegexValidator(r"^\d{4}-\d{2}$", "Month must be in YYYY-MM format.")],
+        help_text="The close month in YYYY-MM format.",
+    )
+    ending_balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Ending balance shown on the bank statement for the account and month.",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.MANUAL,
+        help_text="How this balance value was provided.",
+    )
+    statement_date = models.DateField(
+        blank=True,
+        null=True,
+        help_text="Date the statement balance is as-of (usually the last day of the month).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-month", "account_name"]
+        unique_together = [["realm_id", "qb_account_id", "month"]]
+        verbose_name = "bank statement balance"
+        verbose_name_plural = "bank statement balances"
+
+    def __str__(self) -> str:
+        return f"{self.account_name} — {self.month}: {self.ending_balance}"
+
+
 class Transaction(models.Model):
     """A QuickBooks-sourced transaction, normalized into the internal schema.
 
@@ -156,6 +222,7 @@ class FlagType(models.TextChoices):
 
     RECONCILIATION = "reconciliation", "Reconciliation"
     ANOMALY = "anomaly", "Anomaly"
+    BALANCE_RECONCILIATION = "balance_reconciliation", "Balance Reconciliation"
 
 
 class Severity(models.TextChoices):
@@ -187,7 +254,7 @@ class Flag(models.Model):
         db_index=True,
         help_text="QuickBooks company/realm id this flag belongs to.",
     )
-    flag_type = models.CharField(max_length=20, choices=FlagType.choices)
+    flag_type = models.CharField(max_length=25, choices=FlagType.choices)
     transaction = models.ForeignKey(
         Transaction,
         null=True,
@@ -203,6 +270,14 @@ class Flag(models.Model):
         on_delete=models.SET_NULL,
         related_name="flags",
         help_text="The bank transaction this flag concerns, if any.",
+    )
+    bank_statement_balance = models.ForeignKey(
+        BankStatementBalance,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="flags",
+        help_text="For balance-reconciliation flags, the statement balance that triggered the flag.",
     )
     reason = models.TextField(help_text="Human-readable explanation of the issue.")
     severity = models.CharField(

@@ -13,7 +13,15 @@ from unittest import mock
 from django.core.management import call_command
 from django.test import TestCase
 
-from core.models import BankTransaction, Flag, FlagType, Transaction, SourceType
+from core.models import (
+    BankStatementBalance,
+    BankTransaction,
+    Flag,
+    FlagType,
+    QBAccount,
+    SourceType,
+    Transaction,
+)
 
 
 def _make_txn(**overrides) -> Transaction:
@@ -29,6 +37,136 @@ def _make_txn(**overrides) -> Transaction:
     )
     defaults.update(overrides)
     return Transaction.objects.create(**defaults)
+
+
+class SetBankBalanceCommandTests(TestCase):
+    def test_creates_manual_bank_statement_balance(self) -> None:
+        out = StringIO()
+        call_command(
+            "set_bank_balance",
+            "2026-06",
+            "--realm-id", "realm-a",
+            "--account-id", "qb-acc-1",
+            "--balance", "-3621.93",
+            "--name", "Operating Checking",
+            stdout=out,
+        )
+        self.assertEqual(BankStatementBalance.objects.count(), 1)
+        balance = BankStatementBalance.objects.first()
+        self.assertEqual(balance.realm_id, "realm-a")
+        self.assertEqual(balance.qb_account_id, "qb-acc-1")
+        self.assertEqual(balance.account_name, "Operating Checking")
+        self.assertEqual(balance.month, "2026-06")
+        self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
+        self.assertEqual(balance.source, "manual")
+        self.assertIn("created", out.getvalue().lower())
+
+    def test_updates_existing_balance_for_same_account_month(self) -> None:
+        BankStatementBalance.objects.create(
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("-1000.00"),
+            source=BankStatementBalance.Source.MANUAL,
+        )
+        call_command(
+            "set_bank_balance",
+            "2026-06",
+            "--realm-id", "realm-a",
+            "--account-id", "qb-acc-1",
+            "--balance", "-3621.93",
+            "--name", "Operating Checking",
+        )
+        self.assertEqual(BankStatementBalance.objects.count(), 1)
+        balance = BankStatementBalance.objects.first()
+        self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
+        self.assertEqual(balance.source, "manual")
+
+    def test_invalid_month_format_raises_error(self) -> None:
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command(
+                "set_bank_balance",
+                "not-a-month",
+                "--realm-id", "realm-a",
+                "--account-id", "qb-acc-1",
+                "--balance", "-3621.93",
+            )
+
+
+class SeedBankBalancesCommandTests(TestCase):
+    def _fake_token(self, realm_id: str = "realm-a"):
+        token = mock.MagicMock()
+        token.realm_id = realm_id
+        return token
+
+    def test_seeds_cash_like_account_balances_from_qb(self) -> None:
+        from core.quickbooks import client as qb_client
+        from core.quickbooks import tokens as qb_tokens
+
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            account_type="Bank",
+        )
+
+        with mock.patch.object(
+            qb_tokens, "get_active_token", return_value=self._fake_token("realm-a"),
+        ):
+            with mock.patch.object(qb_client, "build_quickbooks_client"):
+                with mock.patch.object(
+                    qb_client, "fetch_account_current_balances",
+                    return_value={
+                        "qb-acc-1": {"name": "Operating Checking", "balance": Decimal("-3621.93"), "account_type": "Bank"},
+                        "qb-acc-2": {"name": "Office Supplies", "balance": Decimal("0.00"), "account_type": "Expense"},
+                    },
+                ):
+                    call_command(
+                        "seed_bank_balances",
+                        "2026-06",
+                        "--realm-id", "realm-a",
+                    )
+
+        balances = BankStatementBalance.objects.filter(realm_id="realm-a", month="2026-06")
+        self.assertEqual(balances.count(), 1)
+        balance = balances.first()
+        self.assertEqual(balance.qb_account_id, "qb-acc-1")
+        self.assertEqual(balance.account_name, "Operating Checking")
+        self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
+        self.assertEqual(balance.source, "qb_api")
+
+    def test_force_overwrites_existing_balances(self) -> None:
+        from core.quickbooks import client as qb_client
+        from core.quickbooks import tokens as qb_tokens
+
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            account_type="Bank",
+        )
+        BankStatementBalance.objects.create(
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Old Name",
+            month="2026-06",
+            ending_balance=Decimal("-1000.00"),
+            source=BankStatementBalance.Source.MANUAL,
+        )
+
+        with mock.patch.object(
+            qb_tokens, "get_active_token", return_value=self._fake_token("realm-a"),
+        ):
+            with mock.patch.object(qb_client, "build_quickbooks_client"):
+                with mock.patch.object(
+                    qb_client, "fetch_account_current_balances",
+                    return_value={
+                        "qb-acc-1": {"name": "Operating Checking", "balance": Decimal("-3621.93"), "account_type": "Bank"},
+                    },
+                ):
+                    call_command("seed_bank_balances", "2026-06", "--realm-id", "realm-a", "--force")
+
+        balance = BankStatementBalance.objects.get(realm_id="realm-a", qb_account_id="qb-acc-1", month="2026-06")
+        self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
+        self.assertEqual(balance.source, "qb_api")
 
 
 class GenerateBankFeedCommandTests(TestCase):

@@ -49,6 +49,12 @@ class Command(BaseCommand):
         self.stdout.write(
             f"  Unmatched GL rows:    {rec_result.get('unmatched_gl_rows', 0)}"
         )
+        self.stdout.write(
+            f"  Accounts checked:     {rec_result.get('accounts_checked', 0)}"
+        )
+        self.stdout.write(
+            f"  Balance flags:        {rec_result.get('balance_flags_created', 0)}"
+        )
 
         anomaly_result = run_anomaly_detection(month, realm_id=realm_id)
         if anomaly_result.get("message"):

@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from core.models import (
+    BankStatementBalance,
     BankTransaction,
     CloseSummary,
     Flag,
@@ -82,6 +83,67 @@ class TransactionTests(TestCase):
             {choice[0] for choice in SourceType.choices},
             {c.value for c in valid},
         )
+
+
+class BankStatementBalanceTests(TestCase):
+    def test_create_and_fields(self) -> None:
+        balance = BankStatementBalance.objects.create(
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("-3621.93"),
+            source=BankStatementBalance.Source.MANUAL,
+            statement_date=date(2026, 6, 30),
+        )
+        self.assertEqual(balance.realm_id, "realm-a")
+        self.assertEqual(balance.qb_account_id, "qb-acc-1")
+        self.assertEqual(balance.account_name, "Operating Checking")
+        self.assertEqual(balance.month, "2026-06")
+        self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
+        self.assertEqual(balance.source, "manual")
+        self.assertEqual(balance.statement_date, date(2026, 6, 30))
+
+    def test_unique_together_per_realm_account_month(self) -> None:
+        BankStatementBalance.objects.create(
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("-3621.93"),
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                BankStatementBalance.objects.create(
+                    realm_id="realm-a",
+                    qb_account_id="qb-acc-1",
+                    account_name="Operating Checking",
+                    month="2026-06",
+                    ending_balance=Decimal("-3500.00"),
+                )
+
+    def test_same_account_allowed_in_different_realms_or_months(self) -> None:
+        BankStatementBalance.objects.create(
+            realm_id="realm-a", qb_account_id="qb-acc-1", account_name="Checking",
+            month="2026-06", ending_balance=Decimal("-100.00"),
+        )
+        BankStatementBalance.objects.create(
+            realm_id="realm-b", qb_account_id="qb-acc-1", account_name="Checking",
+            month="2026-06", ending_balance=Decimal("-200.00"),
+        )
+        BankStatementBalance.objects.create(
+            realm_id="realm-a", qb_account_id="qb-acc-1", account_name="Checking",
+            month="2026-07", ending_balance=Decimal("-300.00"),
+        )
+        self.assertEqual(BankStatementBalance.objects.count(), 3)
+
+    def test_str_representation(self) -> None:
+        balance = BankStatementBalance.objects.create(
+            realm_id="realm-a", qb_account_id="qb-acc-1", account_name="Checking",
+            month="2026-06", ending_balance=Decimal("-3621.93"),
+        )
+        self.assertIn("Checking", str(balance))
+        self.assertIn("2026-06", str(balance))
 
 
 class QBAccountTests(TestCase):
@@ -240,7 +302,16 @@ class CloseSummaryTests(TestCase):
 
 class AdminRegistrationTests(TestCase):
     def test_all_models_registered_in_admin(self) -> None:
-        for model in (Transaction, BankTransaction, Flag, CloseSummary, QBAccount, QBToken, QuickBooksCompany):
+        for model in (
+            BankStatementBalance,
+            Transaction,
+            BankTransaction,
+            Flag,
+            CloseSummary,
+            QBAccount,
+            QBToken,
+            QuickBooksCompany,
+        ):
             self.assertIn(
                 model,
                 admin.site._registry,

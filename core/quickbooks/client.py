@@ -456,6 +456,47 @@ def sync_transactions(
     return {"created": created, "skipped": skipped, "errors": 0, "per_type": per_type}
 
 
+def fetch_account_current_balances(
+    qb_client: QuickBooks,
+    qb_token: Optional[Any] = None,
+) -> dict[str, dict[str, Any]]:
+    """Return current balances for all active QuickBooks accounts.
+
+    Returns a dict keyed by ``account_id`` with values ``{"name": str,
+    "balance": Decimal, "account_type": str}``.
+
+    This uses the live ``CurrentBalance`` field on each ``Account`` object, so it
+    reflects today's balance rather than a historical month-end balance. It is
+    intended as a **sandbox convenience** for seeding ``BankStatementBalance`` rows
+    when no statement file is available.
+    """
+
+    def _fetch(client: QuickBooks) -> list:
+        return Account.all(qb=client)
+
+    try:
+        accounts = call_with_retry(qb_client, qb_token, _fetch)
+    except Exception as exc:  # noqa: BLE001 — final API failure is reported, not crashed
+        logger.exception("fetch_account_current_balances: failed to pull accounts")
+        return {}
+
+    balances: dict[str, dict[str, Any]] = {}
+    for account in accounts:
+        account_id = str(getattr(account, "Id", "") or "")
+        name = str(getattr(account, "Name", "") or "")
+        if not account_id or not name:
+            continue
+        balance = _to_decimal(getattr(account, "CurrentBalance", 0))
+        account_type = str(getattr(account, "AccountType", "") or "")
+        balances[account_id] = {
+            "name": name,
+            "balance": balance,
+            "account_type": account_type,
+        }
+
+    return balances
+
+
 def sync_accounts(
     qb_client: QuickBooks,
     qb_token: Optional[Any] = None,

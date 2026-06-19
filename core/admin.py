@@ -8,6 +8,7 @@ from __future__ import annotations
 from django.contrib import admin
 
 from core.models import (
+    BankStatementBalance,
     BankTransaction,
     CloseSummary,
     Flag,
@@ -62,6 +63,13 @@ class QBTokenAdmin(admin.ModelAdmin):
               "refresh_token_expires_at", "created_at", "updated_at")
     readonly_fields = ("realm_id", "last_refreshed", "access_token_expires_at",
                         "refresh_token_expires_at", "created_at", "updated_at")
+
+
+@admin.register(BankStatementBalance)
+class BankStatementBalanceAdmin(admin.ModelAdmin):
+    list_display = ("account_name", "month", "ending_balance", "source", "realm_id")
+    list_filter = ("source", "month")
+    search_fields = ("account_name", "qb_account_id", "realm_id")
 
 
 @admin.register(QBAccount)

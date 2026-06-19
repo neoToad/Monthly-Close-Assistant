@@ -17,13 +17,23 @@ import pandas as pd
 from django.db import transaction
 from django.db.models import Q
 
-from core.models import BankTransaction, Flag, FlagType, Severity, Transaction
+from core.models import (
+    BankStatementBalance,
+    BankTransaction,
+    Flag,
+    FlagType,
+    Severity,
+    Transaction,
+)
 
 logger = logging.getLogger(__name__)
 
 #: Two-sided match tolerances.
 AMOUNT_TOLERANCE = Decimal("0.01")
 DATE_TOLERANCE_DAYS = 1
+
+#: Balance-level reconciliation tolerance.
+BALANCE_TOLERANCE = Decimal("0.01")
 
 
 def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
@@ -103,6 +113,79 @@ def _find_best_match(
         by=["amount_diff", "date_diff"], ascending=[True, True]
     ).iloc[0]
     return int(best.name)
+
+
+def check_account_balances(month: str, realm_id: Optional[str] = None) -> dict:
+    """Compare stored bank statement balances to posted GL totals for ``month``.
+
+    For every ``BankStatementBalance`` row matching ``month`` (and optional
+    ``realm_id``), sum the ``Transaction.amount`` values whose ``gl_account`` matches
+    the statement account name. If the absolute difference exceeds
+    ``BALANCE_TOLERANCE``, create a ``BALANCE_RECONCILIATION`` ``Flag`` with severity
+    ``HIGH``.
+
+    Existing balance-reconciliation flags for the same statement balance are replaced
+    so the check is idempotent.
+
+    Returns a summary dict with ``accounts_checked`` and ``balance_flags_created``.
+    """
+    first, last = _month_bounds(month)
+
+    balances_qs = BankStatementBalance.objects.filter(month=month)
+    if realm_id:
+        balances_qs = balances_qs.filter(realm_id=realm_id)
+
+    flags_to_create: list[Flag] = []
+    for balance in balances_qs:
+        txns = Transaction.objects.filter(
+            realm_id=balance.realm_id,
+            gl_account=balance.account_name,
+            date__range=(first, last),
+        )
+        posted_total = sum(
+            (txn.amount for txn in txns),
+            start=Decimal("0"),
+        )
+        difference = balance.ending_balance - posted_total
+
+        if abs(difference) > BALANCE_TOLERANCE:
+            flags_to_create.append(
+                Flag(
+                    realm_id=balance.realm_id,
+                    flag_type=FlagType.BALANCE_RECONCILIATION,
+                    bank_statement_balance=balance,
+                    reason=(
+                        f"Bank ending balance (${balance.ending_balance}) for "
+                        f"\"{balance.account_name}\" in {month} does not match posted "
+                        f"GL total (${posted_total}); difference ${difference}."
+                    ),
+                    severity=Severity.HIGH,
+                )
+            )
+
+    with transaction.atomic():
+        # Replace existing balance-reconciliation flags for these statement balances.
+        delete_qs = Flag.objects.filter(
+            flag_type=FlagType.BALANCE_RECONCILIATION,
+            bank_statement_balance__in=balances_qs,
+        )
+        delete_qs.delete()
+        Flag.objects.bulk_create(flags_to_create)
+
+    logger.info(
+        "check_account_balances(%s, %s): checked=%s balance_flags=%s",
+        month,
+        realm_id,
+        len(balances_qs),
+        len(flags_to_create),
+    )
+
+    return {
+        "month": month,
+        "realm_id": realm_id or "",
+        "accounts_checked": len(balances_qs),
+        "balance_flags_created": len(flags_to_create),
+    }
 
 
 def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
@@ -222,10 +305,14 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
         len(flags_to_create),
     )
 
+    balance_result = check_account_balances(month, realm_id=realm_id)
+
     return {
         "month": month,
         "flags_created": len(flags_to_create),
         "matched_bank_rows": int(bank_df["matched"].sum()),
         "unmatched_bank_rows": int((~bank_df["matched"]).sum()),
         "unmatched_gl_rows": int((~txn_df["matched"]).sum()),
+        "accounts_checked": balance_result["accounts_checked"],
+        "balance_flags_created": balance_result["balance_flags_created"],
     }
