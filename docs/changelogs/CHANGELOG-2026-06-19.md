@@ -1,0 +1,1138 @@
+# Changelog
+
+All notable changes to the Monthly Close Assistant are recorded here, one entry per
+commit, per the AGENTS.md workflow. Steps track the prompts in
+`docs/Monthly_Close_Assistant_CLI_Agent_Prompts_Full.md`.
+
+---
+
+## Multi-company QuickBooks support — `feat(core,ui): multi-company QuickBooks realm scoping`
+
+Implemented the plan from `docs/plans/multi_company_qb_plan.md` so the assistant can
+connect to and operate against multiple QuickBooks sandbox companies in the same
+database.
+
+- **Schema changes** (`core/models.py`, migration `0003_quickbookscompany_banktransaction_realm_id_and_more`):
+  - Added `realm_id` to `Transaction`, `BankTransaction`, `Flag`, and `CloseSummary`.
+  - Added `QuickBooksCompany` model keyed on `realm_id` to track connected companies.
+  - Replaced the global unique constraint on `Transaction.qb_transaction_id` with
+    `unique_together=("realm_id", "qb_transaction_id")`.
+  - Replaced the global unique constraint on `CloseSummary.month` with
+    `unique_together=("realm_id", "month")`.
+  - Custom migration backfills legacy rows from the most recent `QBToken` before making
+    `realm_id` non-nullable.
+
+- **QuickBooks token/store** (`core/quickbooks/tokens.py`):
+  - `store_tokens()` now creates/updates the matching `QuickBooksCompany` record.
+  - Added `get_active_tokens()` to return all connected realms and kept
+    `get_active_token(realm_id=None)` for targeting one realm.
+
+- **Sync** (`core/quickbooks/client.py`, `core/management/commands/sync_quickbooks.py`):
+  - `sync_transactions(qb_client, qb_token=None, realm_id=None)` tags rows with the
+    realm and keys idempotency on `(realm_id, qb_transaction_id)`.
+  - `sync_quickbooks` syncs all connected companies by default; `--realm-id` syncs a
+    single realm.
+
+- **Reconciliation** (`core/reconciliation/engine.py`):
+  - `run_reconciliation(month, realm_id=None)` loads only the target realm's GL and
+    bank rows, creates flags with the correct `realm_id`, and deletes prior flags scoped
+    to that realm.
+
+- **Anomaly detection** (`core/anomaly/rules.py`):
+  - All rules accept `realm_id` and filter historical baselines and current-month data
+    to the target realm.
+  - `run_anomaly_detection(month, realm_id=None)` deletes and recreates anomaly flags
+    only for the target realm.
+
+- **Close summary** (`core/agent/summary.py`):
+  - `gather_inputs(month, realm_id=None)` and `draft_close_summary(month, realm_id=None)`
+    filter category totals, open flags, and prior-month data to the target realm.
+  - Summaries are saved/updated per `(realm_id, month)`.
+
+- **Bank feed** (`core/bank_feed.py`):
+  - `generate_bank_feed(month, ..., realm_id=None)` filters source transactions and
+    generated bank rows by realm.
+
+- **Management commands**:
+  - Added `--realm-id` to `run_reconciliation`, `generate_close_summary`, and
+    `generate_bank_feed`.
+
+- **Dashboard** (`core/views.py`, `core/templates/core/dashboard_content.html`):
+  - Added a company selector next to the month selector.
+  - Default company is the most recently connected `QBToken` realm.
+  - Sync/reconcile/draft-summary forms carry a hidden `realm_id` so actions target the
+    selected company.
+
+- **Tests**:
+  - Added `core/tests/test_realm_scoping.py` for schema, constraints, and migration
+    backfill behavior.
+  - Added `core/tests/test_multi_company.py` with 12 behavior tests verifying isolation
+    across realms for sync, reconciliation, anomaly detection, bank feed, close summary,
+    and dashboard views.
+  - Updated existing tests to pass explicit `realm_id` values and to patch agent config
+    so tests are environment-independent.
+
+- **Documentation**:
+  - Updated `README.md`, `docs/DEPLOY.md`, `docs/TODO.md`, and `docs/CURRENT_TASK.md`.
+  - Removed `QB_SANDBOX_COMPANY_ID` from `.env.example` (the OAuth callback provides the
+    real `realm_id`).
+
+**TDD:** wrote `test_realm_scoping.py` and `test_multi_company.py` first, drove the
+schema/migration and backend scoping changes, then iterated to green. Full suite:
+**176 tests pass**.
+
+**Improvements beyond the spec:**
+- Defer fetching the official company name from QuickBooks; the dashboard and
+  `QuickBooksCompany` store use the `realm_id` as the stable identifier until a name
+  lookup is added.
+- `get_active_tokens()` orders by most recently refreshed, matching the dashboard
+  default behavior.
+
+**Deviations:** None.
+
+---
+
+## Environment note (applies to the Foundation stage)
+
+The build environment has Python 3.14.2 with no project packages pre-installed, and
+PostgreSQL 17 & 18 running locally as Windows services whose superuser credentials are
+not available to the build agent. To satisfy "write & apply migrations" and "run the
+test suite" (both required by TDD), a self-contained PostgreSQL 17 instance is
+provisioned in Docker on port **5434** (`close_pg` container, db `close_assistant`,
+user `close_app`). This does not touch the user's local PG 17/18 services and is fully
+reversible:
+
+```
+docker stop close_pg && docker rm close_pg   # tear down
+docker start close_pg                         # restart later
+```
+
+This is a documented deviation from "use the running local Postgres"; it is still a
+real Postgres reachable at `localhost`, so migrations and tests exercise the actual
+Postgres engine (not SQLite).
+
+---
+
+## Step 1 — `feat(core): step 1 — Django project scaffold with Postgres + HTMX`
+
+Scaffolded the `close_assistant` Django project with a `core` app at the repo root,
+configured PostgreSQL from environment variables (DB_NAME, DB_USER, DB_PASSWORD,
+DB_HOST, DB_PORT) via python-decouple, wired django-htmx into INSTALLED_APPS +
+`HtmxMiddleware` and a `core/templates/base.html`, and wrote `.env.example` listing
+every required variable. Default migrations applied to Postgres, confirming
+connectivity. 11 scaffold tests pass (`python manage.py test`).
+
+**TDD:** wrote `core/tests/test_scaffold.py` first and confirmed it failed for the
+right reasons (default sqlite engine, `core`/`django_htmx` absent from INSTALLED_APPS,
+`HtmxMiddleware` missing, `base.html` not found), then implemented to green.
+
+**Improvements beyond the spec:**
+- `requirements.txt` pinning the top-level deps (Django 6.0.6, python-decouple 3.8,
+  django-htmx 1.27.0, psycopg[binary] 3.3.4, python-quickbooks 0.9.12,
+  intuit-oauth 1.2.6).
+- Tests split into a `core/tests/` package (per AGENTS.md) with a dedicated
+  `test_scaffold.py`; DB-field tests use `.get()` so the pre-implementation sqlite
+  scaffold fails with clean AssertionErrors instead of KeyErrors.
+- `base.html` ships a small, dependency-free internal-tool stylesheet (table, flash,
+  button styles) plus `content`/`extra_head`/`scripts` blocks for later HTMX partials.
+- `DEFAULT_AUTO_FIELD` set explicitly to `BigAutoField`; `STATIC_ROOT` added for a
+  later collectstatic stage.
+- Module docstrings + `from __future__ import annotations` in settings and tests.
+
+**Deviations:**
+- Postgres runs in a Docker container (`close_pg`) on host port **5434**, not the
+  machine's local PG services. Local PG 17 & 18 bind host 5432 & 5433, so a Docker
+  container on 5433 collided (`localhost:5433` routed to the local PG and failed
+  auth); 5434 is free. See the environment note at the top of this file.
+- `startproject` was run in a temp dir and moved into the repo root because Django
+  aborts `startproject <name> .` on a non-empty target directory.
+- Used psycopg3 (`psycopg[binary]`) instead of psycopg2; Django 6.0 supports it
+  natively and it has Python 3.14 wheels.
+
+---
+
+## Step 2 — `feat(core): step 2 — Postgres schema: Transaction/BankTransaction/Flag/CloseSummary + admin`
+
+Added the four `core` models with field shapes per the spec:
+
+- **Transaction** — date, vendor, amount `DecimalField(12,2)`, category, gl_account,
+  `qb_transaction_id` (unique + indexed, the idempotent-sync natural key), source_type
+  (choices: Purchase / Deposit / JournalEntry).
+- **BankTransaction** — mirrors the Transaction shape, plus a nullable
+  `matched_transaction_id` FK → Transaction (`on_delete=SET_NULL`).
+- **Flag** — flag_type (reconciliation / anomaly), nullable FKs to Transaction and to
+  BankTransaction, reason `TextField`, severity (low/medium/high), status
+  (open/approved/rejected), created_at.
+- **CloseSummary** — month (YYYY-MM, unique), summary_text, status (draft/reviewed),
+  reviewer_notes, created_at.
+
+Wrote and applied migration `core.0001_initial`. Registered all four in Django admin.
+
+**TDD:** wrote `core/tests/test_models.py` (17 tests) first and confirmed it failed for
+the right reason (`ImportError` — models undefined), then implemented to green. Full
+suite: 28 tests pass; the Postgres test DB is created/dropped by the runner.
+
+**Improvements beyond the spec:**
+- `TextChoices` enums for source_type, flag_type, severity, Flag status, and
+  CloseSummary status (forward-compatible with the reconciliation/anomaly prompts).
+- Money stored as `DecimalField(max_digits=12, decimal_places=2)`, not float.
+- `help_text` on every meaningful field; class docstrings;
+  `from __future__ import annotations`.
+- `CloseSummary.month` validated with `RegexValidator(r"^\d{4}-\d{2}$")` + unique;
+  `verbose_name_plural` set.
+- Admin tuned for reviewers: `list_display`, `list_filter`, `search_fields`,
+  `date_hierarchy` (token fields excluded from QBToken admin in Step 3).
+- `__str__` on every model.
+- Hardened `test_scaffold.test_db_name_from_env` against the test runner's `test_` DB
+  name prefix (surfaced when the full suite first ran alongside the model TestCases).
+
+**Deviations:** None. The schema matches the spec; the choice sets for flag_type /
+severity / status anticipate the reconciliation (Prompt 7) and anomaly (Prompt 8)
+prompts that create Flags of those types.
+
+---
+
+## Step 3 — `feat(core): step 3 — QuickBooks OAuth 2.0 + sync_quickbooks command`
+
+Implemented the QuickBooks Online OAuth 2.0 authorization-code flow and a
+`sync_quickbooks` management command, test-first against **mocked** QuickBooks
+responses (no live sandbox credentials).
+
+- **OAuth start view** (`/quickbooks/oauth/start/`) — builds an Intuit `AuthClient`
+  from `QB_CLIENT_ID`/`QB_CLIENT_SECRET`/`QB_REDIRECT_URI`, generates a CSRF state,
+  stashes it in the session, and redirects to Intuit's authorize URL.
+- **OAuth callback view** (`/quickbooks/oauth/callback/`) — verifies the state,
+  exchanges the code for tokens, and persists them.
+- **Token-refresh helper** (`refresh_tokens`) — drives `AuthClient.refresh()` and
+  returns the new tokens with computed access/refresh expiry datetimes.
+- **`sync_quickbooks` command** — authenticates with the stored token, pulls
+  Purchase / Deposit / JournalEntry, normalizes each into `Transaction`, and skips
+  records already present (matched on `qb_transaction_id`).
+
+**TDD:** wrote `core/tests/test_quickbooks.py` (encryption roundtrip + plaintext
+fallback, per-type normalization, skip-on-missing-id/date, idempotent sync,
+token-refresh) and `core/tests/test_views.py` (OAuth start redirect + state,
+callback exchange/store, state mismatch, missing code, sync command happy path +
+no-token error) first; confirmed both modules failed to import for the right reason
+(`ModuleNotFoundError: core.quickbooks`), then implemented to green. Full suite:
+**46 tests pass**.
+
+**Improvements beyond the spec:**
+- DRY service split into `core/quickbooks/client.py` (OAuth, refresh, pull,
+  normalize, sync) and `core/quickbooks/tokens.py` (Fernet encrypt/decrypt + token
+  persistence) — suggested by the foundation prompt.
+- `QBToken` model stores access/refresh tokens **encrypted at rest** with a Fernet
+  key (`QB_TOKEN_ENCRYPTION_KEY` env), with a plaintext dev fallback that emits a
+  warning. Migration `core.0002_qbtoken`; admin excludes the token fields from view.
+- Idempotent sync keyed on the natural key `qb_transaction_id` (`get_or_create`),
+  with a per-type counts summary (`created`/`skipped`/`errors`/`per_type`).
+- Defensive normalization: tolerant date parsing, `Decimal(str(...))` for money,
+  best-effort `Ref.name`/`Ref.value` lookups, and skip (not crash) on records missing
+  an id or date.
+- `intuit-oauth` is imported via its `intuitlib` namespace (`intuitlib.client.AuthClient`,
+  `intuitlib.enums.Scopes`) — the package's `intuit_oauth` shim is broken on Python 3.14
+  (see project memory).
+- Intuit `environment` hardcoded to `"sandbox"` (matches
+  `quickbooks.client.Environments.SANDBOX == 'sandbox'`); `QB_ENVIRONMENT` is
+  formalized in Prompt 4.
+
+---
+
+## Step 4 — `feat(core): step 4 — QuickBooks env config, sandbox/production switch`
+
+Hardened QuickBooks environment configuration and token-refresh buffer settings.
+
+- **`.env.example`** now documents every QuickBooks variable:
+  `QB_CLIENT_ID`, `QB_CLIENT_SECRET`, `QB_REDIRECT_URI`, `QB_SANDBOX_COMPANY_ID`,
+  `QB_ENVIRONMENT` (sandbox|production), `QB_TOKEN_REFRESH_BUFFER_MINUTES`, and
+  `QB_TOKEN_ENCRYPTION_KEY`. Each variable has a comment explaining where it comes
+  from and what value to use for local development.
+- **`close_assistant/settings.py`** added `QB_ENVIRONMENT` and
+  `QB_TOKEN_REFRESH_BUFFER_MINUTES` settings, loaded via `python-decouple`.
+- **`core/quickbooks/client.py`** added `get_environment()` (validates
+  sandbox|production, case-insensitive, defaults to sandbox) and `get_api_base_url()`
+  returning the correct v3 API base URL for each environment.
+- **`make_auth_client` / `build_quickbooks_client`** now read `QB_ENVIRONMENT` from
+  settings, so the OAuth and data clients both target the configured QuickBooks
+  environment (sandbox or production).
+- **`QBToken.is_access_token_expired()`** now accepts a `buffer_minutes` argument
+  defaulting to `QB_TOKEN_REFRESH_BUFFER_MINUTES`. Tokens inside that buffer are
+  treated as expired so the sync can refresh proactively before Intuit rejects the
+  request.
+
+**TDD:** extended `core/tests/test_quickbooks.py` and `core/tests/test_scaffold.py`
+with 9 new tests first: environment default/read/validation/case-normalization,
+make_auth_client passes the configured environment, sandbox/production API base
+URLs, and token-expiry buffer behavior. Confirmed failures (`AttributeError` for
+new helpers, `AssertionError` for hardcoded sandbox), then implemented to green.
+Full suite: **55 tests pass**.
+
+**Improvements beyond the spec:**
+- Centralized environment validation in `get_environment()` so the app fails fast
+  with a clear `ValueError` on an invalid `QB_ENVIRONMENT` value.
+- `get_api_base_url()` is exposed as a reusable helper for any future direct API
+  calls (the python-quickbooks client already picks the right host via
+  `AuthClient.environment`, but the explicit URL is useful for logging / links).
+- `QBToken.is_access_token_expired()` preserves backward compatibility: calling it
+  without arguments still uses the configured buffer from settings.
+
+**Deviations:** None. The live QuickBooks sandbox pull remains un-exercised; this
+step only changed configuration and unit-tested the environment switching logic.
+
+---
+
+## Step 5 — `feat(core): step 5 — QuickBooks sync retry, refresh, and clear logging`
+
+Added robust error handling around the QuickBooks sync pipeline.
+
+- **`refresh_and_store_tokens()`** in `core/quickbooks/client.py` builds a fresh
+  `AuthClient` seeded with the stored refresh token, calls `refresh()`, and writes
+  the new tokens back to `QBToken` via `store_tokens`.
+- **`call_with_retry()`** wraps every QuickBooks API call:
+  - Proactively refreshes the access token before the first attempt if it is expired
+    or inside `QB_TOKEN_REFRESH_BUFFER_MINUTES`.
+  - Catches `AuthorizationException` mid-sync, refreshes the token once, and retries.
+  - Catches transient errors (`QuickbooksException`, `ConnectionError`, `TimeoutError`)
+    and retries up to 3 times with exponential backoff (2s, 4s, 8s).
+  - Logs every retry path and final failure clearly.
+- **`pull_raw_records()`** now routes each object query through `call_with_retry`,
+  passing the stored `QBToken` through.
+- **`sync_transactions()`** catches final pull failures, returns an error summary
+  (`errors=1`, `error_message`), and logs the exception instead of crashing silently.
+- **`sync_quickbooks` command** surfaces any `error_message` as a `CommandError`.
+
+**TDD:** added 5 new tests in `core/tests/test_quickbooks.py` for proactive refresh,
+auth-error refresh+retry, auth-error-after-refresh failure, transient-error
+exponential backoff, and transient-error success-on-retry. Confirmed failures for
+missing helpers, then implemented to green. Full suite: **60 tests pass**.
+
+**Improvements beyond the spec:**
+- Wrapped the *entire* data-pull path in retry logic, not just the top-level sync
+  command, so every `Purchase.all()` / `Deposit.all()` / `JournalEntry.all()` call
+  is resilient.
+- `sync_transactions()` returns an error result rather than crashing the command,
+  keeping the management command in control of the final user-facing message.
+- Used `time.sleep` directly in `call_with_retry` (patched to no-op in tests) so the
+  backoff behavior is real in production but fast in the test suite.
+
+**Deviations:** None. The live QuickBooks sandbox pull remains un-exercised; all
+retry/refresh behavior is unit-tested with mocked exceptions.
+
+---
+
+## Step 6 — `feat(core): step 6 — fake bank feed generator with configurable discrepancies`
+
+Built a fake bank feed generator for reconciliation testing.
+
+- **New module `core/bank_feed.py`** with `generate_bank_feed(month, ...)`:
+  - Reads ``Transaction`` records for the requested month.
+  - Uses Pandas to apply configurable discrepancies:
+    * ``drop_rate`` (default 5%)
+    * ``dup_rate`` (default 3%)
+    * ``amount_shift_rate`` (default 4%, deltas -$2.50 to +$3.75)
+    * ``date_shift_rate`` (default 5%, ±1-2 days)
+    * ``extra_rate`` (default 3%, bank-only rows with no GL match)
+  - Returns and logs a discrepancy summary with counts for each category.
+  - Rejects regeneration unless ``force=True``; ``force`` deletes existing bank rows
+    for the month first.
+- **New management command `generate_bank_feed``** with arguments for month and all
+  five rates, plus ``--force`` and an optional ``--seed`` for reproducible testing.
+- Added **Pandas 2.2.3** and **NumPy 2.2.6** to `requirements.txt`.
+
+**TDD:** created `core/tests/test_management.py` with 4 tests first: no-data
+warning, generation + summary output, ``--force`` overwrite behavior, and
+month-isolation. Confirmed failures (`Unknown command: 'generate_bank_feed'`), then
+implemented to green. Full suite: **64 tests pass**.
+
+**Improvements beyond the spec:**
+- Isolated the generator logic in `core/bank_feed.py` so it can be tested and reused
+  outside the management command (e.g., from the upcoming `seed_demo_data` command).
+- Used ``bulk_create`` inside an atomic transaction for efficient insertion.
+- Added ``--seed`` for deterministic discrepancy generation, useful for reconciliation
+  test assertions.
+- Preserved bank data for other months by filtering deletes/lookups on the target
+  month range.
+
+**Deviations:** None.
+
+---
+
+## Step 7 — `feat(core): step 7 — Pandas reconciliation engine + run_reconciliation command`
+
+Implemented the reconciliation engine that compares GL ``Transaction`` records to
+the fake ``BankTransaction`` feed and creates ``Flag`` records for mismatches.
+
+- **New package `core/reconciliation/`** with `engine.py`:
+  - Loads both sides into Pandas DataFrames for the target month.
+  - Matches bank rows to GL rows on vendor equality, amount within $0.01, and date
+    within 1 day.
+  - Flags amount mismatches, date mismatches (within tolerance), bank-only rows,
+    and GL-only rows.
+  - Returns a summary dict with counts of matched/unmatched rows and flags created.
+- **New management command `run_reconciliation``** taking a `YYYY-MM` month argument
+  and printing the reconciliation summary.
+
+**TDD:** extended `core/tests/test_management.py` with 7 reconciliation tests first:
+no-data exit, clean match (no flags), amount mismatch flag, date mismatch beyond
+and within tolerance, missing bank, and missing GL. Confirmed failures (`Unknown
+command: 'run_reconciliation'`), then implemented to green. Full suite: **71 tests pass**.
+
+**Improvements beyond the spec:**
+- Separated the matching engine (`core/reconciliation/engine.py`) from the command
+  so the logic is reusable and unit-testable without invoking a management command.
+- Used Pandas for the comparison and `bulk_create` for flag insertion.
+- Matched on lower-cased vendor names to tolerate minor casing differences.
+
+**Deviations:** None.
+
+**Deviations:**
+- **Live sandbox pull NOT exercised** (no sandbox credentials available). The OAuth
+  flow and sync pipeline are fully implemented and unit-tested against mocked
+  QuickBooks responses; the live pull against the Intuit sandbox is deferred and
+  noted in `docs/TODO.md`. Per the foundation prompt's instruction, this is recorded
+  here explicitly.
+- Retry/backoff on QuickBooks API errors is deferred to Prompt 5.
+
+---
+
+## Step 8 — `feat(core): step 8 — rule-based anomaly detection integrated with reconciliation`
+
+Added rule-based anomaly detection on a month's ``Transaction`` records and
+wired it into the `run_reconciliation` command.
+
+- **New package `core/anomaly/`** with `rules.py`:
+  - Vendor amounts more than 2 standard deviations from that vendor's historical
+    average (or outside a constant historical average when σ = 0).
+  - Duplicate transactions (same vendor + amount within a 7-day window).
+  - New vendors with no transaction history before the current month.
+  - Categories whose total spend changed more than 200% compared to the prior month.
+  - Every hit creates a ``Flag`` with ``flag_type="anomaly"``, a clear reason, and
+    a severity.
+- **`run_reconciliation` command** now calls `run_anomaly_detection(month)` after
+  reconciliation and prints an anomaly-detection summary.
+- Defensive handling for empty months and Pandas chained-assignment warnings.
+
+**TDD:** extended `core/tests/test_management.py` with 6 anomaly tests first:
+no-data exit, vendor z-score anomaly, duplicate within 7 days, new vendor,
+category month-over-month jump > 200%, and insufficient history skipping z-score.
+Confirmed failures (missing `run_anomaly_detection`, empty-month `KeyError`), then
+implemented to green. Full suite: **77 tests pass**.
+
+**Improvements beyond the spec:**
+- Separated anomaly rules into a dedicated service module (`core/anomaly/rules.py`)
+  so they can be reused outside the management command.
+- Used `bulk_create` inside an atomic transaction for efficient flag insertion.
+- Lower-cased vendor/category names for case-tolerant grouping and matching.
+- Handled the σ = 0 edge case by flagging any current-month amount that differs
+  from a constant historical average, rather than silently skipping the vendor.
+- Guarded category MoM checks so categories with no prior-month baseline do not
+  produce spurious flags.
+
+**Deviations:** None. Live QuickBooks data was not used; all anomaly checks are
+exercised against generated `Transaction` records.
+
+---
+
+## Step 9 — `feat(core): step 9 — idempotency for reconciliation, sync, and bank feed`
+
+Made the data pipeline idempotent so repeated runs do not duplicate records.
+
+- **`run_reconciliation`** now deletes existing reconciliation ``Flag`` records
+  for the target month (by linked ``Transaction`` or ``BankTransaction`` date)
+  before creating the newly computed set, inside the same atomic transaction.
+- **`run_anomaly_detection`** now deletes existing anomaly ``Flag`` records whose
+  linked ``Transaction`` falls in the target month before inserting the new set,
+  also inside an atomic transaction.
+- **Category month-over-month anomaly flags** now attach to a representative
+  ``Transaction`` for the category so they can be scoped to a month and removed
+  on re-run.
+- **`sync_quickbooks`** idempotency is already enforced by
+  ``Transaction.objects.get_or_create(qb_transaction_id=...)``; added a command-level
+  test confirming a second run produces no duplicates.
+- **`generate_bank_feed`** already required ``--force`` when bank data exists for
+  the month; this behavior is covered by existing tests.
+
+**TDD:** added 3 idempotency tests first:
+- `test_reconciliation_is_idempotent` in `RunReconciliationCommandTests`
+  (failed: second run doubled reconciliation flags).
+- `test_anomaly_detection_is_idempotent` in `AnomalyDetectionCommandTests`
+  (failed: second run doubled anomaly flags).
+- `test_command_is_idempotent` in `SyncCommandTests`
+  (passed because `get_or_create` was already in place, but added for regression
+  coverage).
+
+Confirmed failures, implemented month-scoped deletion, then verified all 80 tests
+pass (`python manage.py test`).
+
+**Improvements beyond the spec:**
+- Scoped deletion uses the related ``Transaction`` / ``BankTransaction`` date so
+  flags for other months are never touched.
+- Category-level anomaly flags were previously detached from any transaction;
+  tying them to a representative transaction keeps deletion precise and gives
+  reviewers a clickable starting point.
+- Deletion and insertion happen in the same `transaction.atomic()` block, so a
+  re-run is all-or-nothing.
+
+**Deviations:** None.
+
+---
+
+## Step 10 — `feat(core): step 10 — agent-drafted close summary via LangGraph/LangChain-Anthropic`
+
+Installed an agent framework and built a close-summary generator.
+
+- **New package `core/agent/`** with `summary.py`:
+  - `gather_inputs(month)` collects open ``Flag`` records, monthly category totals,
+    prior-month category totals, and total spend.
+  - `build_prompt()` renders the inputs into a prompt for the LLM and a deterministic
+    fallback.
+  - A single-node **LangGraph** graph (`StateGraph`) whose node calls a Claude model
+    via **LangChain-Anthropic** when ``ANTHROPIC_API_KEY`` is configured.
+  - When no API key is present, the node falls back to a deterministic summary so
+    local development and CI do not require live API access.
+  - `draft_close_summary(month)` runs the graph and saves/updates a
+    ``CloseSummary`` with ``status="draft"`` using ``update_or_create`` (idempotent).
+- **New management command `generate_close_summary`** that drafts and prints the
+  summary for a given month.
+- Added `langchain`, `langchain-anthropic`, and `langgraph` to `requirements.txt`.
+- Added `ANTHROPIC_API_KEY` and optional `CLOSE_SUMMARY_MODEL` to `.env.example`.
+
+**TDD:** created `core/tests/test_agent.py` and extended
+`core/tests/test_management.py` with 7 tests first: gather_inputs returns category
+ totals / open flags only, fallback summary without API key, deterministic fallback
+contains inputs, re-running updates existing summary, fake LLM client injection,
+and the `generate_close_summary` command creates a draft. Confirmed failures
+(`ModuleNotFoundError: core.agent`, `Unknown command: 'generate_close_summary'`),
+then implemented to green. Full suite: **87 tests pass**.
+
+**Improvements beyond the spec:**
+- The agent module is fully mockable: `draft_close_summary(month, llm=...)` accepts
+  a prebuilt LangChain runnable for tests or custom pipelines.
+- Close summaries are idempotent via `update_or_create`; running the command twice
+  updates the existing draft instead of creating duplicates.
+- Category totals exclude blank categories and include prior-month comparisons for
+  context.
+- Open-flag filtering scopes to the target month and ignores rejected flags.
+
+**Deviations:**
+- Live Anthropic summary generation was **not exercised** (no Anthropic API key
+  available). The LangGraph/LangChain integration is implemented and the LLM path
+  is unit-tested with a fake client; the deterministic fallback is used in the
+  standard test suite.
+
+---
+
+## Step 11 — `feat(core): step 11 — demo data seeding command`
+
+Added a single `seed_demo_data` management command that creates a fully populated
+month of demo data and runs the entire close pipeline.
+
+- **New module `core/demo_seed.py`** with `seed_demo_data(month, count=20, ...)`:
+  - Clears flags and demo ``Transaction`` rows (``qb_transaction_id__startswith="DEMO-"``)
+    for the target month before re-seeding.
+  - Creates ``count`` synthetic ``Transaction`` records with Faker using realistic
+    vendors, categories, GL accounts, and amounts.
+  - Runs ``generate_bank_feed`` with ``force=True`` to produce the bank side.
+  - Runs ``run_reconciliation`` (which includes anomaly detection) to generate flags.
+  - Runs ``draft_close_summary`` to create/update a ``CloseSummary`` draft.
+  - Defaults to a deterministic random seed so re-runs produce the same demo data and
+    the same flags (idempotent); ``--seed`` lets users vary the data.
+- **New management command `seed_demo_data``** with ``month``, optional ``--count``,
+  and optional ``--seed`` arguments.
+- Added **Faker 40.23.0** to `requirements.txt`.
+
+**TDD:** added 3 tests to `core/tests/test_management.py` first:
+- `test_seeds_transactions_bank_feed_flags_and_summary` (failed: unknown command).
+- `test_re_running_is_idempotent` (failed: second run produced different flag counts).
+- `test_preserves_non_demo_transactions` (failed: unknown command).
+
+Fixed by adding the command, clearing flags before demo transactions, and defaulting
+to a deterministic seed. Full suite: **90 tests pass**.
+
+**Improvements beyond the spec:**
+- Demo clearing only deletes demo-identified transactions, so any real
+  ``Transaction`` rows the user already has are preserved.
+- Flags are cleared before transactions to avoid orphaned ``Flag`` records with
+  ``NULL`` FKs after the demo rows are deleted.
+- The command prints a clear stage summary: transactions created, bank transactions
+  created, reconciliation flags created, and close summary month.
+
+**Deviations:** None. Live QuickBooks and Anthropic integrations are still not
+exercised; the demo command uses the local fake feed and deterministic summary.
+
+---
+
+## Step 12 — `feat(core): step 12 — Celery + Redis scheduled QuickBooks sync`
+
+Installed Celery and Redis, wired Celery into Django, and added a nightly scheduled
+task that runs the QuickBooks sync.
+
+- **New `close_assistant/celery.py`** and updated `close_assistant/__init__.py` to
+  load the Celery app alongside Django.
+- **`close_assistant/settings.py`** now configures:
+  - `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` (defaulting to
+    `redis://localhost:6379/0`).
+  - `CELERY_TASK_ALWAYS_EAGER` toggle for tests / CI.
+  - `CELERY_BEAT_SCHEDULE` with a nightly `sync-quickbooks-nightly` crontab at
+    midnight.
+- **New `core/tasks.py`** with `sync_quickbooks_task`, a thin `@shared_task` wrapper
+  around `call_command("sync_quickbooks")`.
+- Added **Celery 5.6.3** and **redis 8.0.0** to `requirements.txt`.
+- Added `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, and `CELERY_TASK_ALWAYS_EAGER`
+  to `.env.example`.
+- Also fixed `core/demo_seed.py` to pass the same deterministic seed into
+  `generate_bank_feed`, ensuring `seed_demo_data` re-runs produce identical demo
+  data and flags.
+
+**TDD:** created `core/tests/test_celery.py` with 3 tests first: Celery app loads
+broker URL from Django settings, beat schedule contains the nightly sync task, and
+the task calls `sync_quickbooks`. Confirmed failures (`ModuleNotFoundError` for
+`close_assistant.celery` and `core.tasks`), then implemented to green. Full suite:
+**93 tests pass**.
+
+**Improvements beyond the spec:**
+- The task is a thin wrapper around the existing management command, avoiding
+  duplicated sync logic.
+- `CELERY_TASK_ALWAYS_EAGER` is configurable from the environment, making it easy to
+  run the test suite without a live Redis broker.
+- Broker/result-backend URLs are fully environment-driven.
+
+**Deviations:** None. The nightly beat schedule is configured; live Redis and a
+running worker are not required for the test suite.
+
+---
+
+## Step 13 — `feat(core): step 13 — HTMX review dashboard`
+
+Built the `/dashboard/` review interface for monthly close review.
+
+- **New dashboard views** in `core/views.py`:
+  - `dashboard` — renders the dashboard for a selected month.
+  - `flag_approve` / `flag_reject` — POST actions that update a flag's status and
+    return the updated table row partial.
+  - `summary_review` — POST action that marks a ``CloseSummary`` reviewed and saves
+    reviewer notes, returning the updated summary partial.
+- **URL routes** added in `core/urls.py`:
+  - `/dashboard/`
+  - `/dashboard/flag/<id>/approve/` and `/dashboard/flag/<id>/reject/`
+  - `/dashboard/summary/<month>/review/`
+- **Templates** under `core/templates/core/`:
+  - `dashboard.html` — full page extending `base.html`.
+  - `dashboard_content.html` — partial swapped by the month selector (`hx-get`).
+  - `flag_row.html` — partial row with Approve/Reject buttons (`hx-post`).
+  - `close_summary_section.html` — partial summary block with Mark Reviewed form.
+
+**TDD:** created `core/tests/test_dashboard.py` with 5 tests first: dashboard
+renders flags and summary, HTMX partial response, flag approve, flag reject, and
+close-summary review. Confirmed failures (`NoReverseMatch`), then implemented to
+green. Full suite: **98 tests pass**.
+
+**Improvements beyond the spec:**
+- The month selector uses HTMX to fetch the partial dashboard content and updates
+  the URL via `hx-push-url`.
+- Flag actions return only the swapped row, keeping the rest of the page intact.
+- The summary section is a separate partial so the review form can update in place.
+- Open flags are scoped to the selected month and sorted newest-first.
+
+**Deviations:** None. Access control (login required) is intentionally deferred to
+Prompt 14 per the spec.
+
+---
+
+## Step 14 — `feat(core): step 14 — dashboard access control with @login_required`
+
+Required authentication for the review dashboard and all dashboard action views using
+Django's built-in auth.
+
+- **`core/views.py`**: added `django.contrib.auth.decorators.login_required` and
+  applied it to `dashboard`, `flag_approve`, `flag_reject`, and `summary_review`.
+- **`close_assistant/settings.py`**: added `LOGIN_URL = "/accounts/login/"` and
+  `LOGIN_REDIRECT_URL = "/dashboard/"`.
+- **`close_assistant/urls.py`**: included `django.contrib.auth.urls` at
+  `/accounts/` so the built-in login/logout views are available.
+- **`core/templates/registration/login.html`**: simple login form extending
+  `base.html`.
+
+**TDD:** extended `core/tests/test_dashboard.py` with 4 access-control tests first:
+anonymous users are redirected to `/accounts/login/` for the dashboard, flag
+approve/reject, and summary review; logged-in users can access the dashboard.
+Confirmed failures (302 vs 200/405 for anonymous requests), then implemented to green.
+Full suite: **102 tests pass**.
+
+**Improvements beyond the spec:**
+- Login redirect points back to the dashboard via `next`, so users land where they
+  started after authenticating.
+- `login_required` is placed inside `@require_http_methods` / `@require_POST` so
+  anonymous POSTs redirect to login instead of returning a 405.
+
+**Deviations:** None. Logout and password-change views come for free via
+`django.contrib.auth.urls`, but the dashboard only needs login.
+
+---
+
+## Step 15 — `feat(core): step 15 — Dockerize Django + Postgres + Redis`
+
+Wrapped the Monthly Close Assistant in Docker Compose so the whole stack runs
+consistently in local development and CI.
+
+- **`Dockerfile`** — production-ready Django image based on `python:3.13-slim-bookworm`,
+  installs build deps for `psycopg3`, copies the app, exposes port 8000, and uses
+  Gunicorn as the default command.
+- **`docker-entrypoint.sh`** — runs migrations, collects static files, then `exec`s
+  the container command.
+- **`docker-compose.yml`** — brings up:
+  - `db` — Postgres 17 with a healthcheck and named volume.
+  - `redis` — Redis 7 with a healthcheck.
+  - `web` — Django/Gunicorn, depends on healthy `db` and `redis`.
+  - `worker` — Celery worker for background tasks.
+  - `beat` — Celery beat scheduler for nightly sync.
+- **`.dockerignore`** — excludes local env, git, venvs, caches, staticfiles, and Markdown
+  docs except `README.md`.
+- **`close_assistant/settings.py`** now supports `DATABASE_URL` via `dj-database-url`
+  while still falling back to the individual `DB_*` variables used for local dev.
+- **`.env.example`** updated to document `DATABASE_URL`.
+- **`requirements.txt`** added `dj-database-url` and `gunicorn`.
+
+**TDD:** created `core/tests/test_dockerize.py` with 5 tests first: Dockerfile,
+`docker-compose.yml`, and `.dockerignore` exist, `DATABASE_URL` overrides the DB_*
+settings, and the DB_* fallback remains optional. Confirmed failures (files missing,
+HOST was `localhost` instead of `db`), then implemented to green. Full suite:
+**107 tests pass** both on the host and inside the `web` container.
+
+**Improvements beyond the spec:**
+- Included Celery `worker` and `beat` services so scheduled tasks run out of the box
+  in the composed environment.
+- Normalized the parsed `DATABASE_URL` port to a string so the scaffold settings tests
+  stay compatible with the original `python-decouple` string values.
+- Set `PYTHONDONTWRITEBYTECODE` and `PYTHONUNBUFFERED` in the image.
+- Used healthcheck conditions so the web container waits for Postgres and Redis to be
+  ready before starting.
+
+**Deviations:** None. The container uses Python 3.13 (the host environment is 3.14.2)
+  because 3.13 has broad wheel support and a stable slim image; the Django app is
+  compatible with both.
+
+---
+
+## Step 16 — `feat(core): step 16 — GitHub Actions CI/CD with Docker compose`
+
+Added a GitHub Actions workflow that builds the Docker Compose stack and runs the
+full Django test suite on every push and pull request.
+
+- **`.github/workflows/ci.yml`** with:
+  - Triggers on `push` and `pull_request` for `main` and
+    `feature/close-assistant-build`.
+  - A `test` job on `ubuntu-latest`.
+  - Steps: checkout, `docker compose build`, `docker compose run --rm web
+    python manage.py test --noinput -v 1`, and `docker compose down` (always run).
+- **`core/tests/test_cicd.py`** verifies the workflow file exists, targets the right
+  branches, and uses Docker compose for build + test.
+
+**TDD:** wrote `core/tests/test_cicd.py` first; it failed because `.github/workflows/ci.yml`
+did not exist. Implemented the workflow and the tests passed. Full suite:
+**110 tests pass** on the host.
+
+**Improvements beyond the spec:**
+- The CI job mirrors the local container test command exactly, so a green local
+  `docker compose run ...` is a reliable predictor of CI success.
+- `docker compose down` runs even if tests fail, preventing orphaned containers and
+  volumes on CI runners.
+
+**Deviations:** None. The workflow does not deploy; deployment is deferred to
+Prompt 17.
+
+---
+
+## Step 17 — `feat(core): step 17 — Railway deployment guide`
+
+Documented the Railway deployment approach without exercising a live deploy (no
+Railway credentials were available).
+
+- **New `docs/DEPLOY.md`** covering:
+  - Creating a Railway project from the GitHub repo.
+  - Adding managed PostgreSQL and Redis services.
+  - Mapping environment variables (`SECRET_KEY`, `DATABASE_URL`,
+    `CELERY_BROKER_URL`, `ALLOWED_HOSTS`, QuickBooks OAuth vars, etc.).
+  - Starting the web container from the existing `Dockerfile`.
+  - Running Celery worker and beat services for background tasks.
+  - Post-deploy verification steps.
+- Explicit note that the live Railway deploy was **not exercised** in this build.
+
+**TDD:** added `core/tests/test_deploy.py` with 4 tests first: doc exists, mentions
+Railway, lists required env vars, and records the "not exercised" caveat. Confirmed
+failures (`docs/DEPLOY.md` missing), then implemented to green. Full suite:
+**114 tests pass** on the host.
+
+**Improvements beyond the spec:**
+- Kept deployment docs separate from the upcoming README so deployment details can be
+  updated without touching the main project intro.
+- Documented both `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` because Railway Redis
+  provides a single URL that is used for both.
+
+**Deviations:** None. No live deploy was performed; this is recorded explicitly.
+
+---
+
+## Step 18 — `feat(core): step 18 — comprehensive project README`
+
+Replaced the placeholder `README.md` with a full project overview and contributor guide.
+
+- **Root `README.md`** now includes:
+  - Project overview and feature list.
+  - High-level architecture diagram.
+  - Local setup instructions for both Docker Compose and host-based development.
+  - How to run tests on the host and inside the container.
+  - Required environment variables table.
+  - Management commands table with examples.
+  - Dashboard usage and superuser creation.
+  - Deployment notes pointing to `docs/DEPLOY.md`.
+  - CI/CD summary.
+- **`core/tests/test_readme.py`** validates the README presence and key sections (TDD).
+
+**TDD:** wrote `core/tests/test_readme.py` first; it failed because the existing
+`README.md` was a UTF-16 placeholder with only a title. Replaced the file with a
+UTF-8 README covering all required sections, and the tests passed. Full suite:
+**118 tests pass** on the host.
+
+**Improvements beyond the spec:**
+- Converted the README from UTF-16 to UTF-8 for cross-platform compatibility.
+- Added an architecture diagram in ASCII so the high-level data flow is visible
+  without external tooling.
+- Kept deployment details in `docs/DEPLOY.md` and linked from the README to avoid
+  duplicating instructions.
+
+**Deviations:** None. The build stops after Prompt 18 per the original instructions;
+no stretch prompts or PR were opened.
+
+---
+
+## Pre-design-system cleanup — `chore(docs,docker): pre-design-system cleanup`
+
+Committed the uncommitted workspace changes that accumulated before the design
+system stage so the D1–D7 commits stay isolated:
+
+- Added `docs/Monthly_Close_Assistant_Design_System_Prompts.md` and
+  `docs/close-assistant-mockup.html`.
+- Refreshed `docs/prompts/long_horizon_prompt_foundation.md` and
+  `docs/prompts/examples/long_horizon_prompt_example.md` to match the completed
+  foundation/build stages, and added the design-system long-horizon prompt at
+  `docs/prompts/long_horizon_prompt_design_system.md`.
+- Reorganized docs: moved the phase-2 plan to
+  `docs/plans/Monthly_Close_Assistant_CLI_Agent_Prompts_Phase2.md`.
+- Removed the deprecated `docs/Monthly_Close_Assistant_CLI_Agent_Prompts_Full.md`.
+- Kept `docs/DEPLOY.md` in its original location so existing README links and
+  `core/tests/test_deploy.py` continue to pass.
+- Cleared `docs/TODO.md` now that build prompts 1–18 are complete.
+- Switched `docker-compose.yml` to `env_file: .env` for web/worker/beat/db and
+  trimmed duplicated per-variable environment blocks; updated `.dockerignore` to
+  keep `.github/**/*.md` for the README reference.
+
+**Deviations:** None. No code behavior changed; tests continue to pass from the
+previous stage.
+
+---
+
+## D1 — `feat(ui): D1 — design tokens and base ledger styles`
+
+Created the ledger design-system foundation:
+
+- Added `core/static/css/tokens.css` with CSS custom properties for the ledger
+  palette (`--color-ink`, `--color-paper`, `--color-slate`, `--color-flag`,
+  `--color-confirmed`, `--color-rejected`, `--color-hairline`), typography
+  (`--font-display` using Source Serif 4, `--font-body` using IBM Plex Sans),
+  type scale (`--text-xs` through `--text-2xl`), and 4px spacing scale
+  (`--space-1` through `--space-8`).
+- Replaced the inline style block in `core/templates/base.html` with Google Fonts
+  links and a `{% static %}` link to `tokens.css`.
+- Applied global base styles: `--color-paper` background, `--color-ink` text,
+  `--font-body`, and a base reset that avoids shadows.
+
+**TDD:** wrote `core/tests/test_design_system.py` first; it failed because
+`tokens.css` and the new `base.html` links did not exist, then passed after
+implementation.
+
+**Improvements beyond the spec:**
+- Added a `page_header` block in `base.html` so the dashboard can own its
+  ledger-style header without a global nav header.
+- Removed the default generic header from `base.html` so there is only one calm,
+  dashboard-specific header after D2.
+
+**Deviations:** None.
+
+---
+
+## D2 — `feat(ui): D2 — ledger page shell, header, and status strip`
+
+Rebuilt the dashboard page shell:
+
+- Replaced the generic `dashboard_content.html` header with a single-row
+  `.ledger-header` containing the serif page title "Close Assistant" and a
+  plain-text `.month-select` dropdown with a caret.
+- Added a `.status-strip` below the header showing colored-dot counts for
+  open/approved/rejected flags for the selected month.
+- Updated `core/views.py` `dashboard()` to compute `flag_counts` across all flags
+  in the month while still returning only open flags in the main `flags` list.
+- Added header/status styles to `tokens.css`, including a `.visually-hidden`
+  utility and `.month-select` reset with a visible focus state.
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+ledger header structure and status-strip counts, then implemented to green.
+
+**Improvements beyond the spec:**
+- Wrapped the month selector in a `.month-control` div with a visually-hidden label
+  so the select remains accessible while looking like plain text.
+- Added `aria-label` to the status strip and `aria-hidden` on the decorative dots.
+
+**Deviations:** None.
+
+---
+
+## D3 — `feat(ui): D3 — ledger-style flagged-items table`
+
+Redesigned the flagged-items list to look like a ledger:
+
+- Replaced the generic `<table>` in `dashboard_content.html` with a
+  `.ledger-list` of flex rows.
+- Rewrote `core/templates/core/flag_row.html` to show vendor on the primary line,
+  the flag reason as a smaller secondary line, a right-aligned tabular amount with
+  a `$` sign, a colored status dot, and plain-text Approve/Reject buttons that
+  underline on hover.
+- Resolved rows now display a `.status-label` with the matching dot and hide the
+  action buttons.
+- Added `Flag.display_vendor()` and `Flag.display_amount()` helper methods so the
+  row template handles both `Transaction`-linked and `BankTransaction`-linked flags.
+- Added a `status_dot_class` template filter in `core/templatetags/flag_extras.py`
+  to map FlagStatus values to the ledger dot classes cleanly.
+- Added ledger-row CSS to `tokens.css` (hairline dividers, plain-text buttons,
+  tabular nums, status-label colors).
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+new row structure, action-button styling, and resolved-row rendering, then
+implemented to green.
+
+**Improvements beyond the spec:**
+- Created a small reusable template-tag filter for status-dot classes rather than
+  inlining conditional class logic in the row template.
+- Added model helper methods so the UI can render `Transaction` and `BankTransaction`
+  flags consistently without inline null checks.
+
+**Deviations:** None.
+
+---
+
+## D4 — `feat(ui): D4 — document-like draft summary section`
+
+Restyled the close summary block:
+
+- Replaced the generic `<pre>` + status paragraph with a structured summary section:
+  uppercase `DRAFT SUMMARY` eyebrow, month label, readable `summary-text` block
+  with `line-height: 1.6` and `max-width: 70ch`, and a hairline-divided footer.
+- Styled "Mark Reviewed" as a plain-text button (`.text-btn.approve`) next to an
+  understated `.notes-field` textarea.
+- Added a `.summary-status` line for reviewed summaries so the resolved state is
+  visible.
+- Added all summary CSS to `tokens.css` (eyebrow, month/status labels, text
+  measure, footer, notes field).
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+eyebrow, readable text, footer, and reviewed-state rendering, then implemented to
+green.
+
+**Improvements beyond the spec:**
+- Kept the reviewed summary's reviewer notes readable while also surfacing the
+  `Reviewed` status explicitly.
+
+**Deviations:** None.
+
+---
+
+## D5 — `feat(ui): D5 — empty and loading states`
+
+Added the missing non-ideal states:
+
+- Replaced the generic "No open flags" message with a calm empty-state message:
+  "No items flagged for [Month]. Everything reconciled cleanly."
+- Added an `.empty-state` class styled with `--font-body`, `--text-base`, and
+  `--color-slate`.
+- Added a subtle HTMX loading state via `.htmx-request { opacity: 0.5; }` with a
+  short transition, applied to the month selector, action buttons, and the
+  dashboard content container during swaps.
+
+**TDD:** extended `core/tests/test_design_system.py` with failing tests for the
+empty-state copy and the `.htmx-request` CSS rule, then implemented to green.
+
+**Improvements beyond the spec:**
+- Used a single, global `.htmx-request` rule so any HTMX-driven element fades
+  consistently rather than adding per-element spinners.
+
+**Deviations:** None.
+
+---
+
+## D6 — `feat(ui): D6 — responsive layout and accessibility pass`
+
+Completed the responsive and accessibility pass:
+
+- Added a `@media (max-width: 640px)` block that stacks `.ledger-row` vertically,
+  aligns content to the start, and spreads the amount/actions row across the
+  full width.
+- Verified visible keyboard focus states for `.month-select`, `.text-btn`, and
+  `.notes-field` using `:focus-visible` with a 2px `--color-ink` outline.
+- Added a programmatic contrast check in `test_design_system.py` that parses the
+  actual CSS token values and asserts WCAG AA 4.5:1 against `--color-paper`.
+- Darkened `--color-flag` from `#C9762B` to `#A05E22` so the open-flag color
+  passes WCAG AA small-text contrast on the paper background.
+
+**TDD:** wrote failing responsive/contrast tests before adding the media query and
+focus styles, then adjusted the flag color until all tests passed.
+
+**Improvements beyond the spec:**
+- Added a reusable `_token_value()` helper in the tests so contrast assertions
+  stay tied to the live CSS values rather than duplicated hex literals.
+
+**Deviations:**
+- `--color-flag` is `#A05E22` instead of the spec's `#C9762B`. The original value
+  failed WCAG AA against `#F7F5F0` (3.15:1); the adjusted value passes (4.68:1).
+
+---
+
+## D7 — `feat(ui): D7 — self-critique pass`
+
+Completed the final design-system review and constraint checklist:
+
+- Rendered the dashboard with seeded demo data and inspected the markup using the
+  Django test client (curl is not installed in the container).
+- Verified no box-shadows or inline shadows in the dashboard markup; the only
+  `box-shadow` rule in `tokens.css` is the global reset to `none`.
+- Verified no border-radius above 4px in the CSS (4px is used for the month select;
+  50% is used only for the circular status dots via CSS, not markup).
+- Confirmed the layout is flat and hairline-based, with no card wrappers or pill
+  badges.
+- Confirmed serif typography is restricted to `.ledger-title` and `.summary-month`;
+  body copy uses IBM Plex Sans.
+- Confirmed amber (`--color-flag`) is used only for open flags, green
+  (`--color-confirmed`) only for approved/confirmed states, and red
+  (`--color-rejected`) only for rejected states.
+- Fixed `.gitignore` to ignore `celerybeat-schedule*` (including `-shm`/`-wal`
+  SQLite journal files created by the Celery beat scheduler).
+- Full suite passes: **141 tests pass**.
+
+**TDD:** extended `core/tests/test_design_system.py` with `SelfCritiqueTests`
+first, confirmed the tests passed against the rendered dashboard and compiled CSS,
+then documented the manual review in this changelog.
+
+**Improvements beyond the spec:**
+- Performed a hybrid programmatic + manual review: automated checks for shadows,
+  radius, and status-color usage, plus a visual read of the rendered HTML structure.
+
+**Deviations:**
+- The flag dot uses `border-radius: 50%` in CSS. The design-system prompt says
+  "no border-radius above 4px," but a circle is the only way to render a dot;
+  the markup itself contains no `border-radius: 50%` inline style, and all other
+  interactive surfaces stay at or below 4px. This deviation is documented and
+  tested.
+
+---
+
+## Remove dummy data — `feat(core,ui): remove dummy data, add dashboard actions for real QB workflow`
+
+Switched the app from synthetic demo data to a real QuickBooks-first workflow:
+
+- Removed the fake GL transaction generator:
+  - Deleted `core/demo_seed.py` and `core/management/commands/seed_demo_data.py`.
+  - Removed `faker` from `requirements.txt`.
+  - Removed all `seed_demo_data` references from `README.md` and `docs/DEPLOY.md`.
+- Kept the synthetic bank feed as a testing-only tool:
+  - Updated `core/bank_feed.py` docstring and `generate_bank_feed` help text to
+    clarify it is for reconciliation testing, not production data.
+- Added dashboard actions in `core/views.py`:
+  - `qb_sync_now` — pulls the latest QuickBooks transactions.
+  - `reconcile_month` — runs reconciliation + anomaly detection for the month.
+  - `draft_summary` — drafts (or re-drafts) a close summary for the month.
+- Wired new paths in `core/urls.py` and added HTMX forms to
+  `core/templates/core/dashboard_content.html` with a `notice` banner for status
+  messages.
+- Updated dashboard empty state to prompt users to connect QuickBooks and sync
+  when no transaction data exists for the selected month.
+- Updated `core/templates/core/home.html` to emphasize QuickBooks connection and
+  show "Go to dashboard" / "Connect QuickBooks" CTAs for authenticated users.
+- Removed the Admin link from the anonymous navigation in `core/templates/base.html`.
+- Updated tests:
+  - Removed `SeedDemoDataCommandTests` from `core/tests/test_management.py`.
+  - Added `DashboardActionViewTests` in `core/tests/test_views.py` covering sync,
+    reconcile, and draft-summary actions.
+  - Updated `core/tests/test_home.py` to match the new anonymous nav (no Admin link).
+- Restored the missing `.github/workflows/ci.yml` so the CI/CD tests pass; the
+  workflow builds the Docker compose stack and runs the Django test suite.
+- Updated `docs/Monthly_Close_Assistant_Project.md` to describe the synthetic bank
+  feed as a testing helper rather than the production data path.
+
+**TDD:** wrote `DashboardActionViewTests` first, confirmed they failed before the
+new views existed, then implemented to green. Existing `generate_bank_feed`,
+reconciliation, anomaly, and summary tests continue to pass.
+
+**Improvements beyond the spec:**
+- Added a reusable `_dashboard_context()` / `_render_dashboard()` helper pair so
+  every dashboard action returns a consistent full-page or HTMX-partial view.
+- Added `has_data` to dashboard context so the template can distinguish "no data
+  yet" from "data exists and reconciled cleanly."
+
+**Deviations:** None.
+
+---
+
+## Configurable LLM provider — `feat(agent): support OpenAI-compatible providers for close summaries`
+
+Added support for using an OpenAI-compatible LLM API (e.g. Ollama Cloud) for the
+close-summary agent, in addition to the existing Anthropic/Claude path.
+
+- Updated `core/agent/summary.py`:
+  - New `_get_summary_provider()` helper reads `CLOSE_SUMMARY_PROVIDER`
+    (`anthropic` or `openai`; defaults to `anthropic`).
+  - Split `_call_llm()` into provider-specific `_call_anthropic_llm()` and
+    `_call_openai_llm()` paths.
+  - `_call_openai_llm()` uses `langchain_openai.ChatOpenAI` with `OPENAI_API_KEY`
+    and optional `OPENAI_BASE_URL`.
+- Added `langchain-openai==1.3.2` to `requirements.txt` (compatible with the
+  existing `langchain==1.3.9` / `langgraph==1.2.5` stack).
+- Updated `.env.example` with the new variables:
+  `CLOSE_SUMMARY_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`.
+- Updated `README.md` and `docs/DEPLOY.md` env-var tables.
+- Updated `core/tests/test_scaffold.py` to expect the new env vars.
+- Added `LLMProviderSelectionTests` in `core/tests/test_agent.py` covering the
+  default Anthropic path, the OpenAI provider switch, and the Ollama Cloud
+  model/base_url configuration.
+- Removed `QB_SANDBOX_COMPANY_ID` from `.env.example` and the scaffold test as
+  part of this cleanup pass; the OAuth callback provides the real `realm_id`.
+- Full suite: **151 tests pass**.
+
+**TDD:** wrote `LLMProviderSelectionTests` first, confirmed they failed before
+implementation, then implemented to green.
+
+**Deviations:** None.
+
+---
+
+## Fix QB sync regression — `fix(core): pull_raw_records argument order`
+
+Fixed a regression in `core/quickbooks/client.py` that caused live QuickBooks sync
+from the dashboard to fail with `'QuickBooks' object has no attribute 'all'`.
+
+- The inner `_fetch` helper inside `pull_raw_records` had its parameters declared as
+  `_fetch(model, client)`, but `call_with_retry` invokes `func(qb_client, *args)`.
+  With `args=(model,)`, the QuickBooks client was being passed as `model` and the
+  model class as `client`, causing `model.all(qb=client)` to call `.all()` on the
+  `QuickBooks` client object.
+- Corrected `_fetch` to `_fetch(client, model)` so `model.all(qb=client)` receives
+  the actual QuickBooks client.
+- Added `PullRawRecordsTests` in `core/tests/test_quickbooks.py` to exercise
+  `pull_raw_records` with a fake model class and assert the correct `qb=` argument
+  is passed.
+- Full suite: **148 tests pass**.
+
+**TDD:** wrote the regression test first; it failed before the `_fetch` signature
+change and passed after.
+
+**Deviations:** None.
+
+---
