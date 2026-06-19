@@ -22,13 +22,28 @@ commit, per the AGENTS.md workflow.
   `run_reconciliation` command output to show `Accounts checked` and `Balance flags`.
 - Added model, command, and engine tests; full suite now passes **227 tests**.
 
-## docs(reconcile): document bank balance reconciliation feature
+## feat(ui): expose bank balance reconciliation on the dashboard
 
-- Updated README feature list and management-command table to describe the new
-  `set_bank_balance` and `seed_bank_balances` commands and the balance-level
-  reconciliation check.
-- Updated `docs/CURRENT_TASK.md` and appended the feature entry to
-  `docs/CHANGELOG.md`.
+- Added a "Bank Balances" panel to `core/templates/core/dashboard_content.html`
+  showing each cash account's stored ending balance, posted GL total, and
+  reconciled/unreconciled status.
+- Added an inline "Set Bank Balance" form (POST to `/dashboard/balance/set/`) that
+  creates or updates `BankStatementBalance` rows without leaving the dashboard.
+- Added `flag_type_class` and `flag_type_label` template filters so
+  `BALANCE_RECONCILIATION` flags render a distinct "Balance" badge and CSS class.
+- Added `_bank_balances_context()` helper in `core/views.py` and the
+  `set_bank_balance` view that returns the `bank_balances_section.html` partial for
+  HTMX swapping.
+- Added dashboard view tests for the balances panel, unreconciled gap styling, and
+  the set-balance form.
+
+## docs(ui,reconcile): document dashboard bank balance reconciliation
+
+- Updated README feature list and dashboard section to describe the Bank Balances
+  panel and inline balance entry.
+- Updated latest test count to **230 tests**.
+- Updated `docs/CURRENT_TASK.md` and appended entries to `docs/CHANGELOG.md`.
+
 
 ## feat(models): add QBAccount model and extend SourceType choices
 

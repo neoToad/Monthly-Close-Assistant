@@ -2,7 +2,7 @@
 
 ## Stage
 
-Bank balance reconciliation implementation is complete and committed.
+Bank balance reconciliation is now exposed on the frontend dashboard.
 
 ## Current task
 
@@ -10,16 +10,14 @@ Await further instructions.
 
 ## Completed work
 
-1. ✅ Added `BankStatementBalance` model, `FlagType.BALANCE_RECONCILIATION`, migration,
-   and admin registration with tests.
-2. ✅ Added `set_bank_balance` management command for manual ending-balance entry with tests.
-3. ✅ Added QB `fetch_account_current_balances()` helper and `seed_bank_balances` command
-   with mocked tests.
-4. ✅ Added `check_account_balances()` in `core/reconciliation/engine.py`, wired it into
-   `run_reconciliation()`, and added balance reconciliation tests.
-5. ✅ Updated README, CHANGELOG, CURRENT_TASK, and TODO.
-6. ✅ Committed two changes: feature implementation and documentation.
-7. ✅ Full test suite passes: **227 tests**.
+- Added a "Bank Balances" panel to the dashboard showing stored ending balances,
+  posted GL totals, and reconciliation status per cash account.
+- Added an inline "Set Bank Balance" form so reviewers can enter statement balances
+  directly from the dashboard.
+- Added distinct "Balance" styling for `BALANCE_RECONCILIATION` flags.
+- Added dashboard view tests for the bank balances panel, balance gap flags, and the
+  set-balance form.
+- Full test suite passes: **230 tests**.
 
 ## Branch
 

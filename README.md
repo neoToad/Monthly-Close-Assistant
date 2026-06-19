@@ -24,8 +24,8 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
   month-end summary, optionally cross-checking totals against the QuickBooks
   GeneralLedger report; falls back to deterministic output when no API key is set.
 - **HTMX review dashboard** — company and month selectors, open flags table,
-  approve/reject actions, and close-summary review, all server-rendered with HTMX
-  partial updates.
+  approve/reject actions, close-summary review, and a "Bank Balances" panel with
+  inline statement-balance entry, all server-rendered with HTMX partial updates.
 - **Scheduled tasks** — Celery + Redis beat schedule runs the nightly QuickBooks sync.
 - **Dockerized** — `docker compose` stack with Postgres, Redis, web app, Celery worker,
   and beat scheduler.
@@ -136,7 +136,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **227 tests pass**.
+The latest full-suite result: **230 tests pass**.
 
 ## Required environment variables
 
@@ -184,7 +184,11 @@ The review dashboard lives at `/dashboard/` and requires authentication. It show
   Company names are fetched automatically from QuickBooks; the selector falls back to
   the raw `realm_id` when a name is unavailable.
 - A month selector that HTMX-swaps the dashboard content.
+- A **Bank Balances** panel listing each cash account's stored statement balance and
+  posted GL total, highlighting any unreconciled gaps. Use the inline form to set a
+  balance manually.
 - All open flags for the selected company and month with Approve / Reject actions.
+  Balance-reconciliation flags are styled with a "Balance" badge.
 - The current close summary and a form to mark it reviewed with notes.
 
 Create a user for local testing:
