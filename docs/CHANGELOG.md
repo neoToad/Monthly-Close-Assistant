@@ -35,6 +35,18 @@ commit, per the AGENTS.md workflow.
 - Added `RealmIsolationQBAccountTests` for cross-realm account isolation.
 - Added missing vendor-fallback edge-case assertions for the new record types.
 
+## feat(reconcile): scope bank feed to cash-like transaction types
+
+- Added `cash_only: bool = False` parameter to `core/bank_feed.py::generate_bank_feed()`.
+- When `cash_only=True`, source transactions are filtered to actual cash-movement
+  types: `Purchase`, `Deposit`, `BillPayment`, and `JournalEntry` lines whose
+  `gl_account` maps to a cash-like `QBAccount` (Bank / Other Current Asset).
+- If no `QBAccount` data exists for the realm, `JournalEntry` rows are included by
+  default to preserve existing behavior.
+- Added `--cash-only` flag to the `generate_bank_feed` management command.
+- Added tests for `--cash-only` filtering, cash-like JournalEntry scoping, and
+  realm-isolated cash-only bank feeds.
+
 ## feat(qb): fetch and store QuickBooks company names
 
 - Added `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`

@@ -32,7 +32,7 @@
 - [x] Print per-type counts for new transaction sources
 - [x] Add normalization, account sync, and sync-command tests
 - [x] Add realm-isolation tests for `QBAccount`
-- [ ] Scope bank feed to cash-like transaction types with `--cash-only`
+- [x] Scope bank feed to cash-like transaction types with `--cash-only`
 - [ ] Add `fetch_general_ledger_summary` and include in close-summary inputs
 - [ ] Update README and project docs
 - [ ] Run full test suite and commit each step

@@ -65,6 +65,14 @@ class Command(BaseCommand):
             default=None,
             help="Random seed for reproducible discrepancy generation.",
         )
+        parser.add_argument(
+            "--cash-only",
+            action="store_true",
+            help=(
+                "Only use transactions that represent actual cash movement "
+                "(Purchase, Deposit, BillPayment, and cash-like JournalEntry lines)."
+            ),
+        )
 
     def handle(self, *args, **options) -> None:
         month = options["month"]
@@ -80,6 +88,7 @@ class Command(BaseCommand):
                 extra_rate=options["extra_rate"],
                 force=options["force"],
                 seed=options["seed"],
+                cash_only=options["cash_only"],
             )
         except ValueError as exc:
             raise CommandError(str(exc))

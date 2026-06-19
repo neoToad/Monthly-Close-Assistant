@@ -6,12 +6,13 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Current step
 
-**Step 3 — Test coverage for normalization and account sync**
-- Add focused normalization test classes for `Bill`, `BillPayment`, `VendorCredit`.
-- Add `SyncAccountsTests` verifying upsert by `(realm_id, account_id)`.
-- Add `test_sync_command_prints_new_source_counts`.
-- Add realm-isolation tests for `QBAccount`.
-- Add `QBAccount` model tests.
+**Step 4 — Scope bank feed to cash-like transaction types**
+- Add `cash_only: bool = False` parameter to `core/bank_feed.py::generate_bank_feed()`.
+- When `cash_only=True`, restrict source `Transaction` rows to cash movement types:
+  `Purchase`, `Deposit`, `BillPayment`, and `JournalEntry` (only when `gl_account`
+  maps to a cash-like `QBAccount`; include by default if `QBAccount` data is missing).
+- Add `--cash-only` flag to `core/management/commands/generate_bank_feed.py`.
+- Write failing tests first, then implement.
 
 ## Branch
 
@@ -19,4 +20,4 @@ Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
 ## Next step
 
-Commit `test(qb): cover new QuickBooks normalization and account sync`, then begin Step 4.
+Commit `feat(reconcile): scope bank feed to cash-like transaction types`, then begin Step 5.

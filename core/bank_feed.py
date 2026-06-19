@@ -17,7 +17,7 @@ from typing import Optional
 import pandas as pd
 from django.db import transaction
 
-from core.models import BankTransaction, Transaction
+from core.models import BankTransaction, QBAccount, SourceType, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,26 @@ DATE_SHIFTS = [-2, -1, 1, 2]
 
 #: Fake vendors used for bank-only (extra) transactions.
 EXTRA_VENDORS = ["Bank Fee", "Interest Income", "ACH Transfer", "Wire Fee"]
+
+
+#: QuickBooks account types we treat as cash or cash-like for bank-feed purposes.
+CASH_LIKE_ACCOUNT_TYPES = {"Bank", "Other Current Asset"}
+
+
+def _has_qbaccount_data(realm_id: Optional[str]) -> bool:
+    """Return True when any QBAccount rows exist for the realm."""
+    qs = QBAccount.objects.all()
+    if realm_id:
+        qs = qs.filter(realm_id=realm_id)
+    return qs.exists()
+
+
+def _cash_like_gl_account_names(realm_id: Optional[str]) -> set[str]:
+    """Return cash-like QBAccount names for the realm."""
+    qs = QBAccount.objects.filter(account_type__in=CASH_LIKE_ACCOUNT_TYPES)
+    if realm_id:
+        qs = qs.filter(realm_id=realm_id)
+    return set(qs.values_list("name", flat=True))
 
 
 def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
@@ -71,6 +91,7 @@ def generate_bank_feed(
     force: bool = False,
     seed: Optional[int] = None,
     realm_id: Optional[str] = None,
+    cash_only: bool = False,
 ) -> dict:
     """Create ``BankTransaction`` records for ``realm_id``/``month`` from ``Transaction`` rows.
 
@@ -82,6 +103,11 @@ def generate_bank_feed(
     * ``date_shift_rate`` — fraction of rows whose date is shifted 1–2 days.
     * ``extra_rate`` — fraction of bank-only rows added with no matching GL transaction.
 
+    When ``cash_only=True``, only transactions representing actual cash movement are
+    used: ``Purchase``, ``Deposit``, ``BillPayment``, and ``JournalEntry`` lines whose
+    ``gl_account`` belongs to a cash-like ``QBAccount``. If no ``QBAccount`` data exists
+    for the realm, ``JournalEntry`` rows are included by default to avoid regressions.
+
     Returns a summary dict with counts for each discrepancy type. Raises ``ValueError``
     when bank data already exists for the month unless ``force=True``.
     """
@@ -92,6 +118,16 @@ def generate_bank_feed(
     txns = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
         txns = txns.filter(realm_id=realm_id)
+
+    if cash_only:
+        cash_source_types = {SourceType.PURCHASE, SourceType.DEPOSIT, SourceType.BILL_PAYMENT}
+        cash_txns = txns.filter(source_type__in=cash_source_types)
+        je_qs = txns.filter(source_type=SourceType.JOURNAL_ENTRY)
+        if _has_qbaccount_data(realm_id):
+            cash_names = _cash_like_gl_account_names(realm_id)
+            je_qs = je_qs.filter(gl_account__in=cash_names)
+        # If no QBAccount data exists, include all JournalEntry rows by default.
+        txns = cash_txns.union(je_qs)
 
     if not txns.exists():
         return {

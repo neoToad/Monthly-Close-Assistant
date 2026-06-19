@@ -38,6 +38,63 @@ class GenerateBankFeedCommandTests(TestCase):
         self.assertIn("no transactions", out.getvalue().lower())
         self.assertEqual(BankTransaction.objects.count(), 0)
 
+    def test_cash_only_excludes_bill_records(self) -> None:
+        _make_txn(qb_transaction_id="QB-P", source_type=SourceType.PURCHASE)
+        _make_txn(qb_transaction_id="QB-B", source_type=SourceType.BILL)
+        _make_txn(qb_transaction_id="QB-BP", source_type=SourceType.BILL_PAYMENT)
+
+        call_command("generate_bank_feed", "2025-01", "--cash-only", "--drop-rate", "0")
+
+        source_types = set(BankTransaction.objects.values_list("source_type", flat=True))
+        self.assertIn(SourceType.PURCHASE, source_types)
+        self.assertIn(SourceType.BILL_PAYMENT, source_types)
+        self.assertNotIn(SourceType.BILL, source_types)
+
+    def test_cash_only_includes_journal_entry_with_cash_like_account(self) -> None:
+        from core.models import QBAccount
+
+        _make_txn(
+            qb_transaction_id="QB-JE-CASH",
+            source_type=SourceType.JOURNAL_ENTRY,
+            gl_account="Operating Checking",
+        )
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="acc-1", name="Operating Checking",
+            account_type="Bank",
+        )
+        _make_txn(
+            qb_transaction_id="QB-JE-OTHER",
+            source_type=SourceType.JOURNAL_ENTRY,
+            gl_account="Depreciation Expense",
+        )
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="acc-2", name="Depreciation Expense",
+            account_type="Expense",
+        )
+
+        call_command("generate_bank_feed", "2025-01", "--cash-only")
+
+        source_types = set(BankTransaction.objects.values_list("source_type", flat=True))
+        self.assertIn(SourceType.JOURNAL_ENTRY, source_types)
+        self.assertEqual(
+            BankTransaction.objects.filter(source_type=SourceType.JOURNAL_ENTRY).count(), 1
+        )
+        bt = BankTransaction.objects.get(source_type=SourceType.JOURNAL_ENTRY)
+        self.assertEqual(bt.gl_account, "Operating Checking")
+
+    def test_cash_only_includes_journal_entry_when_qbaccount_missing(self) -> None:
+        _make_txn(
+            qb_transaction_id="QB-JE",
+            source_type=SourceType.JOURNAL_ENTRY,
+            gl_account="Some Account",
+        )
+
+        call_command("generate_bank_feed", "2025-01", "--cash-only")
+
+        self.assertEqual(
+            BankTransaction.objects.filter(source_type=SourceType.JOURNAL_ENTRY).count(), 1
+        )
+
     def test_creates_bank_transactions_for_month(self) -> None:
         for i in range(5):
             _make_txn(

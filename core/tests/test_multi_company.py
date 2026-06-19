@@ -169,6 +169,20 @@ class RealmIsolationBankFeedTests(TestCase):
         self.assertEqual(BankTransaction.objects.filter(realm_id="realm-a").count(), result["created"])
         self.assertEqual(BankTransaction.objects.filter(realm_id="realm-b").count(), 0)
 
+    def test_cash_only_bank_feed_excludes_bills_in_target_realm(self) -> None:
+        _make_txn(realm_id="realm-a", qb_transaction_id="QB-A", source_type=SourceType.PURCHASE)
+        _make_txn(realm_id="realm-a", qb_transaction_id="QB-B", source_type=SourceType.BILL)
+        _make_txn(realm_id="realm-b", qb_transaction_id="QB-C", source_type=SourceType.BILL)
+
+        generate_bank_feed("2025-01", realm_id="realm-a", cash_only=True, force=True, seed=1)
+
+        realm_a_sources = set(
+            BankTransaction.objects.filter(realm_id="realm-a").values_list("source_type", flat=True)
+        )
+        self.assertIn(SourceType.PURCHASE, realm_a_sources)
+        self.assertNotIn(SourceType.BILL, realm_a_sources)
+        self.assertEqual(BankTransaction.objects.filter(realm_id="realm-b").count(), 0)
+
 
 class RealmIsolationCloseSummaryTests(TestCase):
     def test_gather_inputs_only_includes_target_realm(self) -> None:
