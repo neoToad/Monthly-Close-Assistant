@@ -3,6 +3,18 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(ui): expose Generate Bank Feed action on the dashboard
+
+- Added `generate_bank_feed_view` in `core/views.py` that calls
+  `core.bank_feed.generate_bank_feed` via POST, supports `force` and `cash_only`
+  flags, and refreshes the dashboard with a summary notice or error message.
+- Wired URL `/dashboard/bank-feed/generate/` in `core/urls.py`.
+- Added a "Generate Bank Feed" button to `core/templates/core/dashboard_content.html`
+  in the dashboard actions bar.
+- Added `GenerateBankFeedViewTests` in `core/tests/test_views.py` covering row
+  creation, no-transaction notice, existing-data protection, and force overwrite.
+- Full suite now passes **269 tests**.
+
 ## feat(reconcile): implement AI-assisted account reconciliation workflow
 
 - Added `AccountReconciliationState` model keyed on `(company, qb_account_id, month)`

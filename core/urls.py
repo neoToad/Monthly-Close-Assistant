@@ -20,6 +20,7 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/sync/", views.qb_sync_now, name="qb_sync_now"),
     path("dashboard/reconcile/", views.reconcile_month, name="reconcile_month"),
+    path("dashboard/bank-feed/generate/", views.generate_bank_feed_view, name="generate_bank_feed"),
     path("dashboard/summary/draft/", views.draft_summary, name="draft_summary"),
     path("dashboard/account/<str:qb_account_id>/suggest/", views.reconcile_account_suggest, name="reconcile_account_suggest"),
     path("dashboard/account/<str:qb_account_id>/apply/", views.reconcile_account_apply, name="reconcile_account_apply"),

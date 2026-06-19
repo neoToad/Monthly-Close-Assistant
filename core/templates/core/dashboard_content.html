@@ -64,6 +64,14 @@
             <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
             <button type="submit" class="btn">Run Reconciliation</button>
         </form>
+        <form hx-post="{% url 'core:generate_bank_feed' %}"
+              hx-target="#dashboard-content"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+            <button type="submit" class="btn">Generate Bank Feed</button>
+        </form>
         <form hx-post="{% url 'core:draft_summary' %}"
               hx-target="#dashboard-content"
               hx-swap="outerHTML">

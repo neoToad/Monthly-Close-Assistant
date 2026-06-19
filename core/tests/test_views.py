@@ -637,3 +637,101 @@ class ReconcileAccountViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Preview")
         mock_apply.assert_not_called()
+
+
+class GenerateBankFeedViewTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reviewer", password="test")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_generate_bank_feed_creates_rows(self) -> None:
+        from core.models import Transaction
+
+        company = _company("realm-a")
+        Transaction.objects.create(
+            company=company,
+            date=dt.date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("100.00"),
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+            realm_id="realm-a",
+        )
+
+        resp = self.client.post(
+            "/dashboard/bank-feed/generate/",
+            {"month": "2025-01", "realm_id": "realm-a"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bank feed generated")
+        from core.models import BankTransaction
+        self.assertGreater(BankTransaction.objects.count(), 0)
+
+    def test_generate_bank_feed_no_transactions_notice(self) -> None:
+        _company("realm-a")
+        resp = self.client.post(
+            "/dashboard/bank-feed/generate/",
+            {"month": "2025-01", "realm_id": "realm-a"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "No transactions for this month")
+
+    def test_generate_bank_feed_existing_requires_force(self) -> None:
+        from core.models import BankTransaction, Transaction
+
+        company = _company("realm-a")
+        Transaction.objects.create(
+            company=company,
+            date=dt.date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("100.00"),
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+            realm_id="realm-a",
+        )
+        self.client.post(
+            "/dashboard/bank-feed/generate/",
+            {"month": "2025-01", "realm_id": "realm-a"},
+        )
+        first_count = BankTransaction.objects.count()
+        self.assertGreater(first_count, 0)
+
+        resp = self.client.post(
+            "/dashboard/bank-feed/generate/",
+            {"month": "2025-01", "realm_id": "realm-a"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "already exist")
+
+    def test_generate_bank_feed_force_overwrites(self) -> None:
+        from core.models import BankTransaction, Transaction
+
+        company = _company("realm-a")
+        Transaction.objects.create(
+            company=company,
+            date=dt.date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("100.00"),
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+            realm_id="realm-a",
+        )
+        self.client.post(
+            "/dashboard/bank-feed/generate/",
+            {"month": "2025-01", "realm_id": "realm-a"},
+        )
+        first_count = BankTransaction.objects.count()
+        self.assertGreater(first_count, 0)
+
+        resp = self.client.post(
+            "/dashboard/bank-feed/generate/",
+            {"month": "2025-01", "realm_id": "realm-a", "force": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bank feed generated")
+        self.assertEqual(BankTransaction.objects.count(), first_count)

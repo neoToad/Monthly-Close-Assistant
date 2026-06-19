@@ -32,6 +32,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from core.agent import reconcile as reconcile_agent
 from core.agent.summary import draft_close_summary
 from core.anomaly.rules import run_anomaly_detection
+from core.bank_feed import generate_bank_feed
 from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
@@ -603,6 +604,56 @@ def set_bank_balance(request):
     context = _bank_balances_context(month, realm_id=realm_id)
     context["month"] = month
     return render(request, "core/bank_balances_section.html", context)
+
+
+@login_required
+@require_POST
+def generate_bank_feed_view(request):
+    """Generate synthetic BankTransaction records for the month and refresh dashboard."""
+    month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = _request_realm_id(request)
+
+    try:
+        _month_bounds(month)
+    except (ValueError, IndexError):
+        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
+
+    force = request.POST.get("force") == "true"
+    cash_only = request.POST.get("cash_only") == "true"
+
+    try:
+        result = generate_bank_feed(
+            month=month,
+            realm_id=realm_id or "",
+            force=force,
+            cash_only=cash_only,
+        )
+    except ValueError as exc:
+        return _render_dashboard(
+            request,
+            month,
+            realm_id=realm_id,
+            notice=str(exc),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Bank feed generation failed for %s/%s", realm_id, month)
+        return _render_dashboard(
+            request,
+            month,
+            realm_id=realm_id,
+            notice=f"Bank feed generation failed: {exc}",
+        )
+
+    if result.get("message"):
+        notice = result["message"]
+    else:
+        notice = (
+            f"Bank feed generated for {month}: {result['created']} bank row(s) "
+            f"({result['dropped']} dropped, {result['duplicated']} duplicated, "
+            f"{result['amount_shifts']} amount shifts, {result['date_shifts']} date shifts, "
+            f"{result['extras']} extras)."
+        )
+    return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
 
 
 @login_required

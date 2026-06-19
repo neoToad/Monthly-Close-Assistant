@@ -31,7 +31,9 @@ an LLM, and presents everything in a lightweight HTMX dashboard for human review
   GeneralLedger report; falls back to deterministic output when no API key is set.
 - **HTMX review dashboard** — company and month selectors, open flags table,
   approve/reject actions, close-summary review, and a "Bank Balances" panel with
-  inline statement-balance entry, all server-rendered with HTMX partial updates.
+  inline statement-balance entry and an AI-assisted **Reconcile** action, all
+  server-rendered with HTMX partial updates. A **Generate Bank Feed** action is
+  also available for sandbox/test data.
 - **Scheduled tasks** — Celery + Redis beat schedule runs the nightly QuickBooks sync.
 - **Dockerized** — `docker compose` stack with Postgres, Redis, web app, Celery worker,
   and beat scheduler.
@@ -142,7 +144,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **265 tests pass**.
+The latest full-suite result: **269 tests pass**.
 
 ## Required environment variables
 

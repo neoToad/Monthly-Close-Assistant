@@ -29,3 +29,9 @@
 - ✅ Add `suggest_account_fixes` and `apply_account_fix` management commands.
 - ✅ Add model, agent, write, view, and command tests.
 - ✅ Update README, CHANGELOG, and TODO.
+
+## Synthetic bank feed
+
+- ✅ Add `generate_bank_feed` management command for synthetic bank transactions.
+- ✅ Expose Generate Bank Feed action on the dashboard with force/cash-only support.
+- ✅ Add view tests for dashboard generation.
