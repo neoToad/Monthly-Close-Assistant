@@ -2,13 +2,11 @@
 
 ## Stage
 
-Bank balance reconciliation implementation is complete per
-`docs/plans/bank_balance_reconciliation_plan.md`.
+Bank balance reconciliation implementation is complete and committed.
 
 ## Current task
 
-Finalizing: commit the changes with the documented commit message and update
-`docs/CHANGELOG.md`.
+Await further instructions.
 
 ## Completed work
 
@@ -20,7 +18,8 @@ Finalizing: commit the changes with the documented commit message and update
 4. ✅ Added `check_account_balances()` in `core/reconciliation/engine.py`, wired it into
    `run_reconciliation()`, and added balance reconciliation tests.
 5. ✅ Updated README, CHANGELOG, CURRENT_TASK, and TODO.
-6. ✅ Full test suite passes: **227 tests**.
+6. ✅ Committed two changes: feature implementation and documentation.
+7. ✅ Full test suite passes: **227 tests**.
 
 ## Branch
 
@@ -28,4 +27,4 @@ Finalizing: commit the changes with the documented commit message and update
 
 ## Next step
 
-Run final tests, then commit.
+Await further instructions.
