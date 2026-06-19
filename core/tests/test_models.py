@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from core.models import (
+    AccountReconciliationState,
     BankStatementBalance,
     BankTransaction,
     CloseSummary,
@@ -24,6 +25,7 @@ from core.models import (
     QBAccount,
     QBToken,
     QuickBooksCompany,
+    ReconciliationStatus,
     Severity,
     SourceType,
     Transaction,
@@ -359,9 +361,78 @@ class QBTokenCompanyTests(TestCase):
         self.assertEqual(token.company, company)
 
 
+class AccountReconciliationStateTests(TestCase):
+    def test_defaults_unreconciled(self) -> None:
+        company = make_company("realm-a")
+        state = AccountReconciliationState.objects.create(
+            company=company,
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+            statement_balance=Decimal("-3621.93"),
+        )
+        self.assertEqual(state.status, ReconciliationStatus.UNRECONCILED)
+        self.assertEqual(state.status, "unreconciled")
+        self.assertEqual(state.posted_total, Decimal("0.00"))
+        self.assertEqual(state.difference, Decimal("0.00"))
+
+    def test_unique_together_per_company_account_month(self) -> None:
+        company = make_company("realm-a")
+        AccountReconciliationState.objects.create(
+            company=company,
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+            statement_balance=Decimal("-3621.93"),
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AccountReconciliationState.objects.create(
+                    company=company,
+                    realm_id="realm-a",
+                    qb_account_id="qb-acc-1",
+                    month="2026-06",
+                    statement_balance=Decimal("-3500.00"),
+                )
+
+    def test_same_account_in_different_months(self) -> None:
+        company = make_company("realm-a")
+        AccountReconciliationState.objects.create(
+            company=company, realm_id="realm-a", qb_account_id="qb-acc-1",
+            month="2026-06", statement_balance=Decimal("-100.00"),
+        )
+        AccountReconciliationState.objects.create(
+            company=company, realm_id="realm-a", qb_account_id="qb-acc-1",
+            month="2026-07", statement_balance=Decimal("-200.00"),
+        )
+        self.assertEqual(AccountReconciliationState.objects.count(), 2)
+
+
+class FlagNotesTests(TestCase):
+    def test_notes_field_defaults_blank(self) -> None:
+        flag = Flag.objects.create(
+            flag_type=FlagType.RECONCILIATION,
+            reason="mismatch",
+            realm_id="realm-a",
+            company=make_company("realm-a"),
+        )
+        self.assertEqual(flag.notes, "")
+
+    def test_notes_field_stores_audit_text(self) -> None:
+        flag = Flag.objects.create(
+            flag_type=FlagType.BALANCE_RECONCILIATION,
+            reason="gap",
+            notes="Created JE-123 for $53.55",
+            realm_id="realm-a",
+            company=make_company("realm-a"),
+        )
+        self.assertIn("JE-123", flag.notes)
+
+
 class AdminRegistrationTests(TestCase):
     def test_all_models_registered_in_admin(self) -> None:
         for model in (
+            AccountReconciliationState,
             BankStatementBalance,
             Transaction,
             BankTransaction,

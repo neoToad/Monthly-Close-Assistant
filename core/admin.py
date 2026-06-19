@@ -8,6 +8,7 @@ from __future__ import annotations
 from django.contrib import admin
 
 from core.models import (
+    AccountReconciliationState,
     BankStatementBalance,
     BankTransaction,
     CloseSummary,
@@ -85,3 +86,11 @@ class QuickBooksCompanyAdmin(admin.ModelAdmin):
     list_filter = ("is_connected", "created_at")
     search_fields = ("realm_id", "name")
     readonly_fields = ("realm_id", "created_at")
+
+
+@admin.register(AccountReconciliationState)
+class AccountReconciliationStateAdmin(admin.ModelAdmin):
+    list_display = ("company", "qb_account_id", "month", "status", "difference", "updated_at")
+    list_filter = ("status", "month")
+    search_fields = ("qb_account_id", "realm_id")
+    readonly_fields = ("updated_at",)

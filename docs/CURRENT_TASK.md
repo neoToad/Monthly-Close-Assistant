@@ -2,12 +2,11 @@
 
 ## Stage
 
-Brainstorming complete. Plan written and awaiting approval.
+Implementing `docs/plans/ai_assisted_account_reconciliation_plan.md`.
 
 ## Current task
 
-Review `docs/plans/ai_assisted_account_reconciliation_plan.md` and approve the
-approach before implementation begins.
+Step 1: add `AccountReconciliationState` model, `Flag.notes`, migration, admin registration, and model tests.
 
 ## Branch
 

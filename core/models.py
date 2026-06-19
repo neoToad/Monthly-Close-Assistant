@@ -7,6 +7,7 @@ the analysis engine, and the agent-drafted ``CloseSummary`` for human review.
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 from django.core.validators import RegexValidator
 from django.db import models
@@ -310,6 +311,11 @@ class Flag(models.Model):
         help_text="For balance-reconciliation flags, the statement balance that triggered the flag.",
     )
     reason = models.TextField(help_text="Human-readable explanation of the issue.")
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional audit notes, e.g. what QuickBooks objects were created.",
+    )
     severity = models.CharField(
         max_length=10, choices=Severity.choices, default=Severity.LOW
     )
@@ -340,6 +346,95 @@ class Flag(models.Model):
         if self.bank_transaction_id is not None:
             return self.bank_transaction.amount
         return None
+
+
+class ReconciliationStatus(models.TextChoices):
+    """Lifecycle of an account-level reconciliation workflow."""
+
+    UNRECONCILED = "unreconciled", "Unreconciled"
+    IN_PROGRESS = "in_progress", "In Progress"
+    RECONCILED = "reconciled", "Reconciled"
+    REVIEWED = "reviewed", "Reviewed"
+
+
+class AccountReconciliationState(models.Model):
+    """Tracks progress per (company, qb_account_id, month) for the AI-assisted
+    reconciliation workflow.
+
+    Stores the control statement balance, posted GL total, difference, current
+    status, and cached/applied suggestions so the workflow is resumable and
+    auditable.
+    """
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="reconciliation_states",
+        help_text="QuickBooks company this reconciliation state belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this state belongs to.",
+    )
+    qb_account_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks account id (natural key scoped by realm).",
+    )
+    month = models.CharField(
+        max_length=7,
+        validators=[RegexValidator(r"^\d{4}-\d{2}$", "Month must be in YYYY-MM format.")],
+        help_text="The close month in YYYY-MM format.",
+    )
+    statement_balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Stored statement balance for the account and month.",
+    )
+    posted_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Posted GL total at the time suggestions were generated.",
+    )
+    difference = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Statement balance minus posted GL total.",
+    )
+    status = models.CharField(
+        max_length=15,
+        choices=ReconciliationStatus.choices,
+        default=ReconciliationStatus.UNRECONCILED,
+        help_text="Current reconciliation status.",
+    )
+    reviewer_notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional reviewer notes for the reconciliation.",
+    )
+    last_suggestions = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Cache of the latest LLM/deterministic suggestions.",
+    )
+    applied_suggestions = models.JSONField(
+        blank=True,
+        default=list,
+        help_text="Suggestion ids that have already been applied to QuickBooks.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-month", "qb_account_id"]
+        unique_together = [["company", "qb_account_id", "month"]]
+        verbose_name = "account reconciliation state"
+        verbose_name_plural = "account reconciliation states"
+
+    def __str__(self) -> str:
+        return f"{self.qb_account_id} — {self.month}: {self.status}"
 
 
 class CloseSummaryStatus(models.TextChoices):
