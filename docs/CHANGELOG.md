@@ -47,6 +47,18 @@ commit, per the AGENTS.md workflow.
 - Added tests for `--cash-only` filtering, cash-like JournalEntry scoping, and
   realm-isolated cash-only bank feeds.
 
+## feat(agent): cross-check close summary against QuickBooks GeneralLedger
+
+- Added `fetch_general_ledger_summary()` in `core/quickbooks/client.py` that uses
+  `qb_client.get_report("GeneralLedger")` and parses the nested report response into
+  `{account_name: total_amount}`. Returns `{}` on API failure so summaries still draft.
+- Updated `core/agent/summary.py::gather_inputs()` to accept an optional
+  `qb_api_client` and include `qb_gl_totals` in the agent inputs.
+- Updated `build_prompt()` and `_deterministic_summary()` to append a
+  "QuickBooks GL cross-check" paragraph when totals are available.
+- Added `GeneralLedgerSummaryTests` and `GeneralLedgerCrossCheckTests` for the fetch
+  helper and deterministic summary output.
+
 ## feat(qb): fetch and store QuickBooks company names
 
 - Added `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`

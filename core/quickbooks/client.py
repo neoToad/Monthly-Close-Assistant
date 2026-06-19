@@ -15,6 +15,7 @@ is formalized in Prompt 4. Retry/backoff is deferred to Prompt 5.
 """
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import logging
 import secrets
@@ -506,3 +507,106 @@ def sync_accounts(
 
     logger.info("sync_accounts: created=%s updated=%s", created, updated)
     return {"created": created, "updated": updated, "errors": 0}
+
+
+def _month_bounds_for_query(month: str) -> tuple[str, str]:
+    """Return (start_date, end_date) strings for a ``YYYY-MM`` month."""
+    year, mon = int(month[:4]), int(month[5:7])
+    first = dt.date(year, mon, 1)
+    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
+    return first.isoformat(), last.isoformat()
+
+
+def _parse_general_ledger_report(report: Any) -> dict[str, Decimal]:
+    """Extract ``{account_name: total_amount}`` from a QuickBooks GeneralLedger report.
+
+    The report structure is deeply nested. This parser is defensive: it walks
+    ``Rows.Row`` and ``Rows.Row.Row`` looking for rows whose first ``ColData`` entry
+    looks like an account name and whose last numeric ``ColData`` entry can be parsed
+    as a monetary amount. Rows without a parseable total are skipped.
+    """
+    totals: dict[str, Decimal] = {}
+
+    def _rows(node: Any) -> list:
+        if node is None:
+            return []
+        rows = getattr(node, "Row", None)
+        if rows is None:
+            return []
+        return rows if isinstance(rows, list) else [rows]
+
+    def _col_values(row: Any) -> list[str]:
+        col_data = getattr(row, "ColData", None)
+        if col_data is None:
+            return []
+        return [str(getattr(col, "Value", "") or "") for col in col_data]
+
+    def _extract_amount(values: list[str]) -> Decimal:
+        # Use the last value that parses as a non-zero decimal.
+        for value in reversed(values):
+            cleaned = value.replace(",", "")
+            try:
+                amount = Decimal(cleaned)
+                if amount != 0:
+                    return amount
+            except (InvalidOperation, ValueError, TypeError):
+                continue
+        return Decimal("0")
+
+    def _is_account_name(value: str) -> bool:
+        # Account names contain letters; ignore headers and empty cells.
+        return bool(value) and any(c.isalpha() for c in value)
+
+    rows = _rows(getattr(report, "Rows", None))
+    # Some reports wrap section rows in an outer Row with nested Rows.Row.
+    if rows and not _col_values(rows[0]):
+        nested = []
+        for section in rows:
+            nested.extend(_rows(getattr(section, "Rows", None)))
+        rows = nested
+
+    for row in rows:
+        values = _col_values(row)
+        if not values:
+            # Try one level deeper (detail rows nested under a summary row).
+            for nested_row in _rows(getattr(row, "Rows", None)):
+                nested_values = _col_values(nested_row)
+                if nested_values and _is_account_name(nested_values[0]):
+                    amount = _extract_amount(nested_values)
+                    if amount:
+                        totals[nested_values[0]] = amount
+            continue
+
+        if _is_account_name(values[0]):
+            amount = _extract_amount(values)
+            if amount:
+                totals[values[0]] = amount
+
+    return totals
+
+
+def fetch_general_ledger_summary(
+    qb_client: QuickBooks,
+    month: str,
+    qb_token: Optional[Any] = None,
+) -> dict[str, Decimal]:
+    """Fetch month-level account totals from QuickBooks' GeneralLedger report.
+
+    Returns ``{account_name: total_amount}``. Returns an empty dict when the API
+    call fails so the close summary can still be drafted without the cross-check.
+    """
+    start_date, end_date = _month_bounds_for_query(month)
+
+    def _fetch(client: QuickBooks) -> Any:
+        return client.get_report(
+            "GeneralLedger",
+            qs={"start_date": start_date, "end_date": end_date},
+        )
+
+    try:
+        report = call_with_retry(qb_client, qb_token, _fetch)
+    except Exception as exc:  # noqa: BLE001 — report fetch is best-effort
+        logger.warning("Failed to fetch GeneralLedger report for %s: %s", month, exc)
+        return {}
+
+    return _parse_general_ledger_report(report)

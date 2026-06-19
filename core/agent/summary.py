@@ -35,6 +35,7 @@ from core.models import (
     FlagStatus,
     Transaction,
 )
+from core.quickbooks import client as qb_client
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +97,16 @@ def _serialize_flag(flag: Flag) -> dict[str, Any]:
     }
 
 
-def gather_inputs(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
-    """Collect the inputs the agent needs to draft a close summary."""
+def gather_inputs(
+    month: str,
+    realm_id: Optional[str] = None,
+    qb_api_client: Optional[Any] = None,
+) -> dict[str, Any]:
+    """Collect the inputs the agent needs to draft a close summary.
+
+    When ``qb_api_client`` is provided, also fetch the QuickBooks GeneralLedger report
+    for the month and include account-level totals as ``qb_gl_totals``.
+    """
     first, last = _month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
@@ -119,6 +128,13 @@ def gather_inputs(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
         prior_txns = prior_txns.filter(realm_id=realm_id)
     prior_total = prior_txns.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
+    qb_gl_totals: dict[str, Decimal] = {}
+    if qb_api_client is not None:
+        try:
+            qb_gl_totals = qb_client.fetch_general_ledger_summary(qb_api_client, month)
+        except Exception as exc:  # noqa: BLE001 — GL cross-check is best-effort
+            logger.warning("Failed to fetch QB GeneralLedger summary for %s: %s", month, exc)
+
     return {
         "month": month,
         "realm_id": realm_id or "",
@@ -127,6 +143,7 @@ def gather_inputs(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
         "category_totals": _category_totals(month, realm_id=realm_id),
         "prior_category_totals": _prior_category_totals(month, realm_id=realm_id),
         "open_flags": [_serialize_flag(f) for f in open_flags],
+        "qb_gl_totals": qb_gl_totals,
     }
 
 
@@ -151,6 +168,11 @@ def build_prompt(inputs: dict[str, Any]) -> str:
             )
     else:
         lines.append("  - No open flags for this month.")
+
+    if inputs.get("qb_gl_totals"):
+        lines.extend(["", "QuickBooks GL cross-check (account totals):",])
+        for account, total in inputs["qb_gl_totals"].items():
+            lines.append(f"  - {account}: ${total}")
 
     lines.extend([
         "",
@@ -184,6 +206,11 @@ def _deterministic_summary(inputs: dict[str, Any]) -> str:
             lines.append(f"  - {flag['severity'].title()} {flag['type']} flag: {flag['reason']}")
     else:
         lines.append("  - None.")
+
+    if inputs.get("qb_gl_totals"):
+        lines.extend(["", "QuickBooks GL cross-check:"])
+        for account, total in inputs["qb_gl_totals"].items():
+            lines.append(f"  - {account}: ${total}")
 
     lines.append("")
     lines.append("Status: Draft — awaiting reviewer approval.")
@@ -291,17 +318,22 @@ _GRAPH = _build_graph()
 
 
 def draft_close_summary(
-    month: str, realm_id: Optional[str] = None, llm: Optional[Any] = None
+    month: str,
+    realm_id: Optional[str] = None,
+    llm: Optional[Any] = None,
+    qb_api_client: Optional[Any] = None,
 ) -> CloseSummary:
     """Draft a close summary for ``realm_id``/``month`` and save it as a ``CloseSummary`` draft.
 
     ``llm`` is an optional prebuilt LangChain runnable (or any object with an
     ``invoke(prompt)`` method returning an object with a ``.content`` string).
+    ``qb_api_client`` is an optional QuickBooks client for fetching the GeneralLedger
+    cross-check totals.
     When omitted, the function reads ``ANTHROPIC_API_KEY`` from the environment
     and builds a Claude-backed chain; if the key is absent, it falls back to a
     deterministic summary.
     """
-    inputs = gather_inputs(month, realm_id=realm_id)
+    inputs = gather_inputs(month, realm_id=realm_id, qb_api_client=qb_api_client)
     if llm is not None:
         inputs["_llm"] = llm
 

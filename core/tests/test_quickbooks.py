@@ -679,6 +679,51 @@ class RetryAndRefreshTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# fetch_general_ledger_summary
+# ---------------------------------------------------------------------------
+
+
+class GeneralLedgerSummaryTests(SimpleTestCase):
+    def _gl_report(self, rows: list) -> SimpleNamespace:
+        """Build a minimal GeneralLedger report-like response."""
+        return SimpleNamespace(
+            Header=SimpleNamespace(
+                Option=[
+                    SimpleNamespace(Name="start_date", Value="2026-05-01"),
+                    SimpleNamespace(Name="end_date", Value="2026-05-31"),
+                ]
+            ),
+            Rows=SimpleNamespace(
+                Row=[
+                    SimpleNamespace(
+                        ColData=[
+                            SimpleNamespace(Value=name),
+                            SimpleNamespace(Value=str(total)),
+                        ],
+                    )
+                    for name, total in rows
+                ],
+            ),
+        )
+
+    @mock.patch.object(qb_client, "call_with_retry")
+    def test_returns_account_totals_for_month(self, mock_call) -> None:
+        mock_client = mock.MagicMock()
+        report = self._gl_report([("Checking", "1000.00"), ("Supplies", "250.00")])
+        mock_call.return_value = report
+        result = qb_client.fetch_general_ledger_summary(mock_client, "2026-05")
+
+        self.assertEqual(result, {"Checking": Decimal("1000.00"), "Supplies": Decimal("250.00")})
+
+    @mock.patch.object(qb_client, "call_with_retry")
+    def test_api_failure_returns_empty_dict(self, mock_call) -> None:
+        mock_call.side_effect = Exception("API down")
+        result = qb_client.fetch_general_ledger_summary(mock.MagicMock(), "2026-05")
+
+        self.assertEqual(result, {})
+
+
+# ---------------------------------------------------------------------------
 # fetch_company_name
 # ---------------------------------------------------------------------------
 

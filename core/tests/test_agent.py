@@ -12,7 +12,15 @@ from unittest import mock
 
 from django.test import TestCase
 
-from core.models import CloseSummary, CloseSummaryStatus, Flag, FlagType, Severity, Transaction
+from core.models import (
+    CloseSummary,
+    CloseSummaryStatus,
+    Flag,
+    FlagType,
+    QBAccount,
+    Severity,
+    Transaction,
+)
 
 
 def _make_txn(**overrides) -> Transaction:
@@ -64,6 +72,58 @@ class GatherInputsTests(TestCase):
         reasons = [f["reason"] for f in inputs["open_flags"]]
         self.assertIn("Amount mismatch", reasons)
         self.assertNotIn("Duplicate", reasons)
+
+
+class GeneralLedgerCrossCheckTests(TestCase):
+    def test_gather_inputs_includes_qb_gl_totals(self) -> None:
+        from core.agent.summary import gather_inputs
+        from core.quickbooks import client as qb_client
+
+        _make_txn(qb_transaction_id="QB-A", category="Software", amount=Decimal("200.00"))
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="acc-1", name="Checking", account_type="Bank"
+        )
+
+        mock_api_client = mock.MagicMock()
+        with mock.patch.object(qb_client, "fetch_general_ledger_summary") as mock_gl:
+            mock_gl.return_value = {"Checking": Decimal("1000.00")}
+            inputs = gather_inputs("2025-01", realm_id="realm-a", qb_api_client=mock_api_client)
+
+        self.assertIn("qb_gl_totals", inputs)
+        self.assertEqual(inputs["qb_gl_totals"], {"Checking": Decimal("1000.00")})
+        mock_gl.assert_called_once_with(mock_api_client, "2025-01")
+
+    def test_deterministic_summary_mentions_qb_gl_totals(self) -> None:
+        from core.agent.summary import _deterministic_summary
+
+        summary = _deterministic_summary({
+            "month": "2025-01",
+            "total_spend": Decimal("500.00"),
+            "prior_total_spend": Decimal("300.00"),
+            "category_totals": {},
+            "prior_category_totals": {},
+            "open_flags": [],
+            "qb_gl_totals": {"Checking": Decimal("1000.00")},
+        })
+
+        self.assertIn("QuickBooks GL", summary)
+        self.assertIn("Checking", summary)
+        self.assertIn("1000.00", summary)
+
+    def test_deterministic_summary_omits_gl_paragraph_when_no_totals(self) -> None:
+        from core.agent.summary import _deterministic_summary
+
+        summary = _deterministic_summary({
+            "month": "2025-01",
+            "total_spend": Decimal("500.00"),
+            "prior_total_spend": Decimal("300.00"),
+            "category_totals": {},
+            "prior_category_totals": {},
+            "open_flags": [],
+            "qb_gl_totals": {},
+        })
+
+        self.assertNotIn("QuickBooks GL", summary)
 
 
 class DraftCloseSummaryTests(TestCase):
