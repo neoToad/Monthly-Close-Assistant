@@ -15,7 +15,6 @@ is formalized in Prompt 4. Retry/backoff is deferred to Prompt 5.
 """
 from __future__ import annotations
 
-import calendar
 import datetime as dt
 import logging
 import secrets
@@ -533,14 +532,6 @@ def sync_accounts(
     return {"created": created, "updated": updated, "errors": 0}
 
 
-def _month_bounds_for_query(month: str) -> tuple[str, str]:
-    """Return (start_date, end_date) strings for a ``YYYY-MM`` month."""
-    year, mon = int(month[:4]), int(month[5:7])
-    first = dt.date(year, mon, 1)
-    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
-    return first.isoformat(), last.isoformat()
-
-
 def _parse_general_ledger_report(report: Any) -> dict[str, Decimal]:
     """Extract ``{account_name: total_amount}`` from a QuickBooks GeneralLedger report.
 
@@ -619,7 +610,9 @@ def fetch_general_ledger_summary(
     Returns ``{account_name: total_amount}``. Returns an empty dict when the API
     call fails so the close summary can still be drafted without the cross-check.
     """
-    start_date, end_date = _month_bounds_for_query(month)
+    from core.common.dates import month_bounds_for_query
+
+    start_date, end_date = month_bounds_for_query(month)
 
     def _fetch(client: QuickBooks) -> Any:
         return client.get_report(

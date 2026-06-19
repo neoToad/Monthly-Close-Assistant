@@ -144,7 +144,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **269 tests pass**.
+The latest full-suite result: **276 tests pass**.
 
 ## Required environment variables
 

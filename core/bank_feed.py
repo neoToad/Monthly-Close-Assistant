@@ -17,22 +17,11 @@ from typing import Optional
 import pandas as pd
 from django.db import transaction
 
+from core.common.constants import AMOUNT_DELTAS, CASH_LIKE_ACCOUNT_TYPES, DATE_SHIFTS, EXTRA_VENDORS
+from core.common.dates import month_bounds
 from core.models import BankTransaction, QBAccount, QuickBooksCompany, SourceType, Transaction
 
 logger = logging.getLogger(__name__)
-
-#: Small amount deltas used to simulate fees, rounding, or FX differences.
-AMOUNT_DELTAS = [Decimal("-2.50"), Decimal("-1.00"), Decimal("1.00"), Decimal("3.75")]
-
-#: Day shifts used to simulate posting delays.
-DATE_SHIFTS = [-2, -1, 1, 2]
-
-#: Fake vendors used for bank-only (extra) transactions.
-EXTRA_VENDORS = ["Bank Fee", "Interest Income", "ACH Transfer", "Wire Fee"]
-
-
-#: QuickBooks account types we treat as cash or cash-like for bank-feed purposes.
-CASH_LIKE_ACCOUNT_TYPES = {"Bank", "Other Current Asset"}
 
 
 def _has_qbaccount_data(realm_id: Optional[str]) -> bool:
@@ -49,14 +38,6 @@ def _cash_like_gl_account_names(realm_id: Optional[str]) -> set[str]:
     if realm_id:
         qs = qs.filter(realm_id=realm_id)
     return set(qs.values_list("name", flat=True))
-
-
-def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
-    """Return (first_day, last_day) for a ``YYYY-MM`` string."""
-    year, mon = int(month[:4]), int(month[5:7])
-    first = dt.date(year, mon, 1)
-    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
-    return first, last
 
 
 def _txns_to_dataframe(txns: list[Transaction]) -> pd.DataFrame:
@@ -116,7 +97,7 @@ def generate_bank_feed(
 
     realm_id = realm_id or ""
     company = QuickBooksCompany.objects.for_realm(realm_id)
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
         txns = txns.filter(realm_id=realm_id)

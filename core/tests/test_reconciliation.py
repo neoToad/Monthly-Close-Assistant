@@ -16,10 +16,15 @@ from core.models import (
     SourceType,
     Transaction,
 )
-from core.reconciliation.engine import check_account_balances, run_reconciliation
+from core.reconciliation.engine import check_account_balances, compute_posted_total, run_reconciliation
+
+
+_make_txn_counter = 0
 
 
 def _make_txn(**overrides) -> Transaction:
+    global _make_txn_counter
+    _make_txn_counter += 1
     realm_id = overrides.get("realm_id", "realm-a")
     company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
@@ -29,7 +34,7 @@ def _make_txn(**overrides) -> Transaction:
         amount=Decimal("100.00"),
         category="Office Supplies",
         gl_account="Operating Checking",
-        qb_transaction_id="QB-1",
+        qb_transaction_id=f"QB-{_make_txn_counter}",
         source_type=SourceType.PURCHASE,
         realm_id=realm_id,
     )
@@ -53,6 +58,32 @@ def _make_bank_balance(**overrides) -> BankStatementBalance:
     defaults.update(overrides)
     defaults["company"] = company
     return BankStatementBalance.objects.create(**defaults)
+
+
+class ComputePostedTotalTests(TestCase):
+    def test_sums_transactions_for_account_and_month(self) -> None:
+        _make_txn(amount=Decimal("100.00"))
+        _make_txn(amount=Decimal("50.00"))
+        _make_txn(amount=Decimal("25.00"), gl_account="Different Account")
+        total = compute_posted_total("2026-06", "Operating Checking", realm_id="realm-a")
+        self.assertEqual(total, Decimal("150.00"))
+
+    def test_returns_zero_when_no_transactions(self) -> None:
+        total = compute_posted_total("2026-06", "Operating Checking", realm_id="realm-a")
+        self.assertEqual(total, Decimal("0.00"))
+
+    def test_realm_isolation(self) -> None:
+        _make_txn(realm_id="realm-a", amount=Decimal("100.00"))
+        _make_txn(realm_id="realm-b", amount=Decimal("999.00"))
+        total = compute_posted_total("2026-06", "Operating Checking", realm_id="realm-a")
+        self.assertEqual(total, Decimal("100.00"))
+
+    def test_respects_month_bounds(self) -> None:
+        _make_txn(date=dt.date(2026, 5, 31), amount=Decimal("100.00"))
+        _make_txn(date=dt.date(2026, 6, 1), amount=Decimal("50.00"))
+        _make_txn(date=dt.date(2026, 7, 1), amount=Decimal("25.00"))
+        total = compute_posted_total("2026-06", "Operating Checking", realm_id="realm-a")
+        self.assertEqual(total, Decimal("50.00"))
 
 
 class CheckAccountBalancesTests(TestCase):

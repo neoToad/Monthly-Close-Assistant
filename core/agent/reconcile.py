@@ -6,8 +6,6 @@ for a single QuickBooks cash account.
 """
 from __future__ import annotations
 
-import calendar
-import datetime as dt
 import json
 import logging
 from decimal import Decimal
@@ -15,7 +13,16 @@ from typing import Any, Optional
 
 from decouple import config
 from django.db import transaction
+from django.db.models import Count
 
+from core.common.constants import (
+    AMOUNT_TOLERANCE,
+    BANK_FEES_THRESHOLD,
+    DEFAULT_BANK_FEES_ACCOUNT,
+    DEFAULT_EXPENSE_ACCOUNT,
+    DEFAULT_INCOME_ACCOUNT,
+)
+from core.common.dates import month_bounds, prior_month
 from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
@@ -25,10 +32,7 @@ from core.models import (
     Transaction,
 )
 from core.quickbooks import client as qb_client
-from core.reconciliation.engine import (
-    AMOUNT_TOLERANCE,
-    _month_bounds,
-)
+from core.reconciliation.engine import compute_posted_total
 
 logger = logging.getLogger(__name__)
 
@@ -39,21 +43,6 @@ _SYSTEM_PROMPT = (
     "Return ONLY a JSON object matching the requested schema. Do not invent data "
     "not present in the inputs."
 )
-
-#: Residual amount below which we assume bank fees / rounding.
-_BANK_FEES_THRESHOLD = Decimal("100.00")
-
-#: Default offset accounts for deterministic suggestions.
-_DEFAULT_EXPENSE_ACCOUNT = "Uncategorized Expense"
-_DEFAULT_INCOME_ACCOUNT = "Miscellaneous Income"
-_DEFAULT_BANK_FEES_ACCOUNT = "Bank Fees"
-
-
-def _prior_month(month: str) -> str:
-    year, mon = int(month[:4]), int(month[5:7])
-    if mon == 1:
-        return f"{year - 1}-12"
-    return f"{year}-{mon - 1:02d}"
 
 
 def _account_name_for_qb_account_id(realm_id: str, qb_account_id: str) -> str:
@@ -99,7 +88,7 @@ def gather_account_inputs(
     qb_api_client: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Collect the inputs the reconciliation agent needs for one account/month."""
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     realm_id = realm_id or ""
     company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
 
@@ -116,29 +105,27 @@ def gather_account_inputs(
 
     account_name = balance.account_name if balance else _account_name_for_qb_account_id(realm_id, qb_account_id)
 
-    posted_txns = Transaction.objects.filter(
-        realm_id=realm_id,
-        gl_account=account_name,
-        date__range=(first, last),
-    )
-    posted_total = sum((txn.amount for txn in posted_txns), start=Decimal("0"))
+    posted_total = compute_posted_total(month, account_name, realm_id=realm_id)
 
     bank_rows = BankTransaction.objects.filter(
         realm_id=realm_id,
         date__range=(first, last),
-    )
+    ).select_related("matched_transaction_id")
     unmatched_bank = [r for r in bank_rows if r.matched_transaction_id is None]
-    unmatched_gl = [
-        txn for txn in Transaction.objects.filter(
+
+    # Use a Count annotation to find GL rows with no linked bank transactions in one query.
+    unmatched_gl = list(
+        Transaction.objects.filter(
             realm_id=realm_id,
             date__range=(first, last),
         )
-        if txn.bank_transactions.count() == 0
-    ]
+        .annotate(bank_count=Count("bank_transactions"))
+        .filter(bank_count=0)
+    )
 
     # Simple matched-but-different detection: same vendor + within date tolerance,
     # but amount differs beyond tolerance.
-    matched_diffs: list[dict] = []
+    matched_diffs: list[dict[str, Any]] = []
     for bank in bank_rows:
         if bank.matched_transaction_id is None:
             continue
@@ -155,7 +142,7 @@ def gather_account_inputs(
         prior_qs = BankStatementBalance.objects.filter(
             company=company,
             qb_account_id=qb_account_id,
-            month=_prior_month(month),
+            month=prior_month(month),
         )
         if prior_qs.exists():
             prior_balance = prior_qs.first().ending_balance
@@ -278,15 +265,25 @@ def _next_suggestion_id(index: int) -> str:
     return f"sug-{index + 1}"
 
 
-def _deterministic_suggestions(inputs: dict[str, Any]) -> list[dict]:
+def _deterministic_suggestions(inputs: dict[str, Any]) -> list[dict[str, Any]]:
     """Generate suggestions without calling an LLM.
 
     Covers two cases:
     * Bank-only rows  -> Purchase (money out) or Deposit (money in) suggestions.
     * Residual difference after those -> JournalEntry against a default adjustment account.
     * Unmatched GL rows are described in the prompt but never suggested as writes.
+
+    Accounting math example:
+    - ``posted_total`` is the current GL cash-account total for the month.
+    - ``statement_balance`` is the bank's ending balance.
+    - A bank-only row of +$100 means the bank shows money going out; we suggest a
+      Purchase that credits cash $100 and debits an expense account.
+    - After covering bank-only rows, ``residual = statement_balance -
+      (posted_total + deposits - purchases)``. If the residual is positive, the GL
+      total is too high, so we debit an offset account and credit cash. If negative,
+      we debit cash and credit the offset account.
     """
-    suggestions: list[dict] = []
+    suggestions: list[dict[str, Any]] = []
     account_name = inputs["account_name"]
     statement_balance = Decimal(str(inputs["statement_balance"])) if inputs["statement_balance"] is not None else Decimal("0")
     posted_total = Decimal(str(inputs["posted_total"]))
@@ -298,7 +295,7 @@ def _deterministic_suggestions(inputs: dict[str, Any]) -> list[dict]:
         vendor = row["vendor"] or "Unknown"
         if amount > 0:
             suggestion_type = "purchase"
-            offset_account = _DEFAULT_EXPENSE_ACCOUNT
+            offset_account = DEFAULT_EXPENSE_ACCOUNT
             description = f"Bank-only {vendor} for ${amount} has no GL match"
             lines = [
                 {"account_name": account_name, "amount": str(-amount), "posting": "Credit"},
@@ -307,7 +304,7 @@ def _deterministic_suggestions(inputs: dict[str, Any]) -> list[dict]:
         else:
             abs_amount = abs(amount)
             suggestion_type = "deposit"
-            offset_account = _DEFAULT_INCOME_ACCOUNT
+            offset_account = DEFAULT_INCOME_ACCOUNT
             description = f"Bank-only {vendor} for ${abs_amount} (income) has no GL match"
             lines = [
                 {"account_name": account_name, "amount": str(abs_amount), "posting": "Debit"},
@@ -340,16 +337,16 @@ def _deterministic_suggestions(inputs: dict[str, Any]) -> list[dict]:
 
     if abs(residual) > AMOUNT_TOLERANCE:
         abs_residual = abs(residual)
-        if abs_residual <= _BANK_FEES_THRESHOLD:
-            offset_account = _DEFAULT_BANK_FEES_ACCOUNT
+        if abs_residual <= BANK_FEES_THRESHOLD:
+            offset_account = DEFAULT_BANK_FEES_ACCOUNT
             description = f"Residual ${abs_residual} likely bank fees / rounding"
             confidence = "medium"
         else:
-            offset_account = _DEFAULT_EXPENSE_ACCOUNT
+            offset_account = DEFAULT_EXPENSE_ACCOUNT
             description = f"Residual ${abs_residual} unknown difference"
             confidence = "low"
 
-        last_day = dt.date(int(inputs["month"][:4]), int(inputs["month"][5:7]), calendar.monthrange(int(inputs["month"][:4]), int(inputs["month"][5:7]))[1])
+        last_day = month_bounds(inputs["month"])[1]
         if residual > 0:
             # GL total is too high relative to bank; we need to reduce cash (credit) and debit expense.
             lines = [
@@ -375,8 +372,14 @@ def _deterministic_suggestions(inputs: dict[str, Any]) -> list[dict]:
     return suggestions
 
 
-def _clean_suggestion(suggestion: dict, inputs: dict[str, Any]) -> dict | None:
-    """Validate and normalize a single LLM suggestion."""
+def _clean_suggestion(suggestion: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate and normalize a single LLM suggestion.
+
+    Drops suggestions that are missing required keys, have an unsupported type, an
+    unparseable amount, fewer than two lines, or any line with an invalid posting type
+    (only ``Debit`` / ``Credit`` are accepted). Sets sensible defaults for ``vendor``
+    and ``account_id`` from the inputs when the LLM omits them.
+    """
     required = {"id", "type", "description", "amount", "date", "confidence", "lines"}
     if not required.issubset(set(suggestion.keys())):
         return None
@@ -398,7 +401,7 @@ def _clean_suggestion(suggestion: dict, inputs: dict[str, Any]) -> dict | None:
     return suggestion
 
 
-def _parse_llm_json(text: str) -> list[dict]:
+def _parse_llm_json(text: str) -> list[dict[str, Any]]:
     """Extract the JSON object from an LLM response and return suggestions list."""
     text = text.strip()
     if text.startswith("```"):
@@ -502,7 +505,7 @@ def suggest_account_fixes(
         month, realm_id, qb_account_id, qb_api_client=qb_api_client
     )
 
-    suggestions: list[dict] = []
+    suggestions: list[dict[str, Any]] = []
     if llm is not None:
         prompt = build_account_reconcile_prompt(inputs)
         raw = llm.invoke(prompt).content

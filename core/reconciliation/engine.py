@@ -7,16 +7,16 @@ Pandas. Matches are based on vendor equality, amount within $0.01, and date with
 """
 from __future__ import annotations
 
-import calendar
-import datetime as dt
 import logging
 from decimal import Decimal
 from typing import Optional
 
 import pandas as pd
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 
+from core.common.constants import AMOUNT_TOLERANCE, BALANCE_TOLERANCE, DATE_TOLERANCE_DAYS
+from core.common.dates import month_bounds
 from core.models import (
     BankStatementBalance,
     BankTransaction,
@@ -29,25 +29,28 @@ from core.models import (
 
 logger = logging.getLogger(__name__)
 
-#: Two-sided match tolerances.
-AMOUNT_TOLERANCE = Decimal("0.01")
-DATE_TOLERANCE_DAYS = 1
 
-#: Balance-level reconciliation tolerance.
-BALANCE_TOLERANCE = Decimal("0.01")
+def compute_posted_total(month: str, account_name: str, realm_id: Optional[str] = None) -> Decimal:
+    """Return the sum of ``Transaction.amount`` for ``account_name`` in ``month``.
 
-
-def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
-    """Return (first_day, last_day) for a ``YYYY-MM`` string."""
-    year, mon = int(month[:4]), int(month[5:7])
-    first = dt.date(year, mon, 1)
-    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
-    return first, last
+    The sum is scoped by ``realm_id`` when provided and is computed with a single
+    grouped aggregate query. Returns ``Decimal("0")`` when no matching transactions
+    exist.
+    """
+    first, last = month_bounds(month)
+    qs = Transaction.objects.filter(
+        gl_account=account_name,
+        date__range=(first, last),
+    )
+    if realm_id:
+        qs = qs.filter(realm_id=realm_id)
+    total = qs.aggregate(total=Sum("amount"))["total"]
+    return total or Decimal("0")
 
 
 def _load_dataframes(month: str, realm_id: Optional[str] = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load Transaction and BankTransaction QuerySets as Pandas DataFrames."""
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
 
     txns = Transaction.objects.filter(date__range=(first, last))
     bank = BankTransaction.objects.filter(date__range=(first, last))
@@ -88,7 +91,15 @@ def _find_best_match(
     bank_row: pd.Series,
     candidates: pd.DataFrame,
 ) -> Optional[int]:
-    """Return the index of the best candidate GL row for a bank row, or None."""
+    """Return the index of the best candidate GL row for a bank row, or None.
+
+    Candidates must match the bank row vendor (case-insensitive) and fall within
+    ``DATE_TOLERANCE_DAYS`` and ``AMOUNT_TOLERANCE``. Tie-breaking is:
+
+    1. Exact amount match (difference 0 wins over any non-zero difference).
+    2. Smallest absolute amount difference.
+    3. Smallest absolute date difference.
+    """
     if candidates.empty:
         return None
 
@@ -104,7 +115,6 @@ def _find_best_match(
     if eligible.empty:
         return None
 
-    # Prefer exact amount, then closest amount, then closest date.
     eligible = eligible.copy()
     eligible.loc[:, "amount_diff"] = (eligible["amount"] - bank_row["amount"]).abs()
     eligible.loc[:, "date_diff"] = (eligible["date"] - bank_row["date"]).apply(
@@ -116,7 +126,7 @@ def _find_best_match(
     return int(best.name)
 
 
-def check_account_balances(month: str, realm_id: Optional[str] = None) -> dict:
+def check_account_balances(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
     """Compare stored bank statement balances to posted GL totals for ``month``.
 
     For every ``BankStatementBalance`` row matching ``month`` (and optional
@@ -130,23 +140,16 @@ def check_account_balances(month: str, realm_id: Optional[str] = None) -> dict:
 
     Returns a summary dict with ``accounts_checked`` and ``balance_flags_created``.
     """
-    first, last = _month_bounds(month)
-
     balances_qs = BankStatementBalance.objects.filter(month=month)
     if realm_id:
         balances_qs = balances_qs.filter(realm_id=realm_id)
 
     flags_to_create: list[Flag] = []
     for balance in balances_qs:
-        txns = Transaction.objects.filter(
-            company=balance.company,
+        posted_total = compute_posted_total(
+            month,
+            balance.account_name,
             realm_id=balance.realm_id,
-            gl_account=balance.account_name,
-            date__range=(first, last),
-        )
-        posted_total = sum(
-            (txn.amount for txn in txns),
-            start=Decimal("0"),
         )
         difference = balance.ending_balance - posted_total
 
@@ -294,7 +297,7 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
             )
         )
 
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     with transaction.atomic():
         delete_qs = Flag.objects.filter(
             flag_type=FlagType.RECONCILIATION

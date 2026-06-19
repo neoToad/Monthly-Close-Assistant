@@ -18,8 +18,6 @@ require live API access.
 """
 from __future__ import annotations
 
-import calendar
-import datetime as dt
 import logging
 from decimal import Decimal
 from typing import Any, Optional, TypedDict
@@ -28,6 +26,7 @@ from decouple import config
 from django.db import transaction
 from django.db.models import Q, Sum
 
+from core.common.dates import month_bounds, prior_month
 from core.models import (
     CloseSummary,
     CloseSummaryStatus,
@@ -54,23 +53,9 @@ class SummaryState(TypedDict):
     summary_text: str
 
 
-def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
-    year, mon = int(month[:4]), int(month[5:7])
-    first = dt.date(year, mon, 1)
-    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
-    return first, last
-
-
-def _prior_month(month: str) -> str:
-    year, mon = int(month[:4]), int(month[5:7])
-    if mon == 1:
-        return f"{year - 1}-12"
-    return f"{year}-{mon - 1:02d}"
-
-
 def _category_totals(month: str, realm_id: Optional[str] = None) -> dict[str, Decimal]:
     """Return {category: total_amount} for ``month`` (empty categories excluded)."""
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     qs = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
         qs = qs.filter(realm_id=realm_id)
@@ -84,7 +69,7 @@ def _category_totals(month: str, realm_id: Optional[str] = None) -> dict[str, De
 
 
 def _prior_category_totals(month: str, realm_id: Optional[str] = None) -> dict[str, Decimal]:
-    prev = _prior_month(month)
+    prev = prior_month(month)
     return _category_totals(prev, realm_id=realm_id)
 
 
@@ -108,7 +93,7 @@ def gather_inputs(
     When ``qb_api_client`` is provided, also fetch the QuickBooks GeneralLedger report
     for the month and include account-level totals as ``qb_gl_totals``.
     """
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
         txns = txns.filter(realm_id=realm_id)
@@ -124,7 +109,7 @@ def gather_inputs(
         open_flags = open_flags.filter(realm_id=realm_id)
     open_flags = open_flags.select_related("transaction", "bank_transaction")
 
-    prior_txns = Transaction.objects.filter(date__range=_month_bounds(_prior_month(month)))
+    prior_txns = Transaction.objects.filter(date__range=month_bounds(prior_month(month)))
     if realm_id:
         prior_txns = prior_txns.filter(realm_id=realm_id)
     prior_total = prior_txns.aggregate(total=Sum("amount"))["total"] or Decimal("0")

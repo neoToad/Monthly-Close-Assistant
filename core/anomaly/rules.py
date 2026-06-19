@@ -11,8 +11,6 @@ Every hit creates a ``Flag`` record with ``flag_type="anomaly"``.
 """
 from __future__ import annotations
 
-import calendar
-import datetime as dt
 import logging
 from decimal import Decimal
 from typing import Optional
@@ -20,34 +18,21 @@ from typing import Optional
 import pandas as pd
 from django.db import transaction
 
+from core.common.constants import (
+    CATEGORY_MOM_THRESHOLD,
+    DUPLICATE_WINDOW_DAYS,
+    MIN_ZSCORE_SAMPLES,
+    ZSCORE_THRESHOLD,
+)
+from core.common.dates import month_bounds, prior_month
 from core.models import Flag, FlagType, QuickBooksCompany, Severity, Transaction
 
 logger = logging.getLogger(__name__)
 
-#: Minimum historical data points needed before a z-score check is meaningful.
-MIN_ZSCORE_SAMPLES = 3
-
-#: Z-score threshold for flagging a vendor amount as anomalous.
-ZSCORE_THRESHOLD = 2.0
-
-#: Window in days for duplicate detection.
-DUPLICATE_WINDOW_DAYS = 7
-
-#: Month-over-month category change threshold (e.g., 2.0 = 200%).
-CATEGORY_MOM_THRESHOLD = 2.0
-
-
-def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
-    """Return (first_day, last_day) for a ``YYYY-MM`` string."""
-    year, mon = int(month[:4]), int(month[5:7])
-    first = dt.date(year, mon, 1)
-    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
-    return first, last
-
 
 def _load_transactions_df(month: str, realm_id: Optional[str] = None) -> pd.DataFrame:
     """Load all ``Transaction`` records for ``month`` as a DataFrame."""
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     qs = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
         qs = qs.filter(realm_id=realm_id)
@@ -242,13 +227,8 @@ def _category_mom_anomalies(
     if df.empty:
         return flags
 
-    realm_id = realm_id or ""
-    year, mon = int(month[:4]), int(month[5:7])
-    if mon == 1:
-        prev_month = f"{year - 1}-12"
-    else:
-        prev_month = f"{year}-{mon - 1:02d}"
-    first_prev, last_prev = _month_bounds(prev_month)
+    prev_month = prior_month(month)
+    first_prev, last_prev = month_bounds(prev_month)
 
     current_totals = df.groupby("category_lower")["amount"].sum()
     prev_qs = Transaction.objects.filter(date__range=(first_prev, last_prev))
@@ -354,7 +334,7 @@ def run_anomaly_detection(month: str, realm_id: Optional[str] = None) -> dict:
     flags.extend(_new_vendor_anomalies(df, month, realm_id=realm_id, company=company))
     flags.extend(_category_mom_anomalies(df, month, realm_id=realm_id, company=company))
 
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
     with transaction.atomic():
         delete_qs = Flag.objects.filter(
             flag_type=FlagType.ANOMALY,

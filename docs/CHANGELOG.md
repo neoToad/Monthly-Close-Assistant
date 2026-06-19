@@ -224,3 +224,38 @@ commit, per the AGENTS.md workflow.
 ## Test Counts
 
 - After dead-code cleanup: **268 tests** passing.
+
+## refactor(reconcile): extract `compute_posted_total` and grouped queries (refactor plan 2.1.B, 2.8.A)
+
+- Added `compute_posted_total(month, account_name, realm_id=None)` in
+  `core/reconciliation/engine.py` as the single source of truth for posted-GL
+  cash-account totals.
+- Updated `core/views.py:_bank_balances_context`,
+  `core/reconciliation/engine.py:check_account_balances`, and
+  `core/agent/reconcile.py:gather_account_inputs` to use the new helper.
+- Replaced manual generator sums with `Sum` aggregates and replaced the
+  per-row `bank_transactions.count()` loop in `gather_account_inputs` with a
+  `Count("bank_transactions")` annotation.
+- Added `select_related("matched_transaction_id")` on bank-row queries to avoid
+  N+1 lookups.
+- Added `ComputePostedTotalTests` in `core/tests/test_reconciliation.py` and
+  fixed `_make_txn` to generate unique `qb_transaction_id` values.
+- Full suite now passes **272 tests**.
+
+## refactor(services): extract apply-flow service layer (refactor plan 2.1.A)
+
+- Added `core/services/reconciliation.py` with
+  `apply_account_reconciliation_suggestions(...)` that centralizes dry-run
+  preview, QuickBooks client construction, selected-suggestion writes via
+  `qb_writes.apply_suggestion`, post-apply transaction sync, reconciliation
+  rerun, `AccountReconciliationState` update, and balance-reconciliation flag
+  audit notes.
+- Refactored `core/views.py:reconcile_account_apply` to a thin HTTP wrapper
+  that calls the service and renders the modal or bank-balances partial.
+- Refactored `core/management/commands/apply_account_fix.py` to delegate to
+  the same service, so the view and command share one code path.
+- Added `core/tests/test_services.py` with direct service-layer coverage for
+  dry run, unknown suggestion, missing token, and successful apply paths.
+- Updated `core/tests/test_views.py` and `core/tests/test_reconcile_commands.py`
+  to patch dependencies inside the new service module.
+- Full suite now passes **276 tests**.

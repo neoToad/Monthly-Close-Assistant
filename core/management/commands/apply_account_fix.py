@@ -1,16 +1,14 @@
 """``apply_account_fix`` management command.
 
-Apply a single reconciliation suggestion to QuickBooks by id.  By default the
-command prints a dry-run preview; pass ``--apply`` to execute the write.
+Apply a single reconciliation suggestion to QuickBooks by id. By default the command
+prints a dry-run preview; pass ``--apply`` to execute the write.
 """
 from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.agent import reconcile as reconcile_agent
-from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.quickbooks import writes as qb_writes
+from core.services.reconciliation import apply_account_reconciliation_suggestions
 
 
 class Command(BaseCommand):
@@ -51,16 +49,6 @@ class Command(BaseCommand):
             "--realm-id is required when no QuickBooks token is stored."
         )
 
-    def _lookup_suggestion(
-        self, result: dict, suggestion_id: str, qb_account_id: str, month: str
-    ) -> dict:
-        for suggestion in result["suggestions"]:
-            if suggestion.get("id") == suggestion_id:
-                return suggestion
-        raise CommandError(
-            f"Suggestion {suggestion_id!r} not found for {qb_account_id}/{month}."
-        )
-
     def handle(self, *args, **options) -> None:
         month = options["month"]
         realm_id = self._resolve_realm_id(options.get("realm_id"))
@@ -68,12 +56,20 @@ class Command(BaseCommand):
         suggestion_id = options["suggestion_id"]
         apply = options["apply"]
 
-        result = reconcile_agent.suggest_account_fixes(month, realm_id, qb_account_id)
-        suggestion = self._lookup_suggestion(
-            result, suggestion_id, qb_account_id, month
+        result = apply_account_reconciliation_suggestions(
+            month=month,
+            realm_id=realm_id,
+            qb_account_id=qb_account_id,
+            suggestion_ids=[suggestion_id],
+            dry_run=not apply,
         )
 
-        if not apply:
+        if result["dry_run"]:
+            if not result["selected"]:
+                raise CommandError(
+                    f"Suggestion {suggestion_id!r} not found for {qb_account_id}/{month}."
+                )
+            suggestion = result["selected"][0]
             self.stdout.write("Preview (dry run) — pass --apply to write to QuickBooks:")
             self.stdout.write(f"  Type:        {suggestion['type']}")
             self.stdout.write(f"  Amount:      ${suggestion['amount']}")
@@ -83,32 +79,13 @@ class Command(BaseCommand):
             )
             return
 
-        token = qb_tokens.get_active_token(realm_id=realm_id)
-        if token is None:
-            raise CommandError(
-                "QuickBooks is not connected. Please connect QuickBooks first."
-            )
-        try:
-            qb = qb_client.build_quickbooks_client(token)
-        except Exception as exc:
-            raise CommandError(f"Could not build QuickBooks client: {exc}") from exc
+        if not result["success"]:
+            raise CommandError(result["error"] or "Failed to apply suggestion.")
 
-        try:
-            created = qb_writes.apply_suggestion(
-                qb,
-                suggestion,
-                realm_id=realm_id,
-                private_note=(
-                    f"AI-assisted reconciliation for {month} — "
-                    f"{suggestion.get('description', '')}"
-                ),
-            )
-        except Exception as exc:
-            raise CommandError(f"Failed to apply suggestion: {exc}") from exc
-
+        created = result["created_objects"][0] if result["created_objects"] else {}
         self.stdout.write(
             self.style.SUCCESS(
-                f"Created {created['object_type']} {created['id']} "
-                f"for ${created['amount']}."
+                f"Created {created.get('object_type', 'object')} {created.get('id', '')} "
+                f"for ${created.get('amount', '')}."
             )
         )

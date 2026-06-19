@@ -556,7 +556,9 @@ class ReconcileAccountViewTests(TestCase):
             realm_id="realm-a",
         )
 
-        with mock.patch("core.views.qb_writes.apply_suggestion") as mock_apply:
+        with mock.patch(
+            "core.services.reconciliation.qb_writes.apply_suggestion"
+        ) as mock_apply:
             resp = self.client.post(
                 "/dashboard/account/qb-acc-1/apply/",
                 {
@@ -588,11 +590,20 @@ class ReconcileAccountViewTests(TestCase):
         )
         token = mock.MagicMock(realm_id="realm-a")
 
-        with mock.patch("core.views.qb_tokens.get_active_token", return_value=token), \
-             mock.patch.object(qb_client, "build_quickbooks_client") as mock_build, \
-             mock.patch.object(qb_client, "sync_transactions", return_value={"created": 0, "skipped": 0, "errors": 0}) as mock_sync, \
-             mock.patch("core.views.qb_writes.apply_suggestion") as mock_apply:
-            mock_apply.return_value = {"object_type": "JournalEntry", "id": "je-1", "amount": "53.55"}
+        with mock.patch(
+            "core.services.reconciliation.qb_tokens.get_active_token", return_value=token
+        ), mock.patch.object(
+            qb_client, "build_quickbooks_client"
+        ) as mock_build, mock.patch.object(
+            qb_client, "sync_transactions", return_value={"created": 0, "skipped": 0, "errors": 0}
+        ) as mock_sync, mock.patch(
+            "core.services.reconciliation.qb_writes.apply_suggestion"
+        ) as mock_apply:
+            mock_apply.return_value = {
+                "object_type": "JournalEntry",
+                "id": "je-1",
+                "amount": "53.55",
+            }
             mock_build.return_value = mock.MagicMock()
             resp = self.client.post(
                 "/dashboard/account/qb-acc-1/apply/",
@@ -624,7 +635,9 @@ class ReconcileAccountViewTests(TestCase):
             realm_id="realm-a",
         )
 
-        with mock.patch("core.views.qb_writes.apply_suggestion") as mock_apply:
+        with mock.patch(
+            "core.services.reconciliation.qb_writes.apply_suggestion"
+        ) as mock_apply:
             resp = self.client.post(
                 "/dashboard/account/qb-acc-1/apply/",
                 {

@@ -51,11 +51,11 @@
 
 ### Step 2 — Refactor execution
 
-- ⬜ Dead code cleanup (2.7.A–F).
-- ⬜ Centralize dates and constants (2.2.C).
-- ⬜ Type hints and docstrings pass (2.4).
-- ⬜ Extract `compute_posted_total` and grouped queries (2.1.B, 2.8.A).
-- ⬜ Extract service layer for apply flow (2.1.A).
+- ✅ Dead code cleanup (2.7.A–F).
+- ✅ Centralize dates and constants (2.2.C).
+- ✅ Type hints and docstrings pass (2.4).
+- ✅ Extract `compute_posted_total` and grouped queries (2.1.B, 2.8.A).
+- ✅ Extract service layer for apply flow (2.1.A).
 - ⬜ Move QB write helpers to `core/services/qb_writes.py` (2.1.C).
 - ⬜ Centralize retry/backoff (2.5.A).
 - ⬜ Add missing idempotency tests (2.6).

@@ -59,11 +59,11 @@ def _account_ref_by_id(realm_id: str, account_id: str) -> Ref:
 
 def create_journal_entry(
     qb_client: QuickBooks,
-    lines: list[dict],
+    lines: list[dict[str, Any]],
     txn_date: str,
     private_note: str,
     realm_id: str,
-) -> dict:
+) -> dict[str, Any]:
     """Create a QuickBooks JournalEntry from suggestion lines.
 
     ``lines`` entries must contain ``account_name``, ``amount`` (signed string),
@@ -116,8 +116,11 @@ def create_purchase(
     category_account: str,
     realm_id: str,
     private_note: str = "",
-) -> dict:
-    """Create a QuickBooks Purchase (expense/cash out) from a suggestion."""
+) -> dict[str, Any]:
+    """Create a QuickBooks Purchase (expense/cash out) from a suggestion.
+
+    ``category_account`` must exist as an active ``QBAccount.name`` for ``realm_id``.
+    """
     bank_ref = _account_ref_by_id(realm_id, account_id)
     category_refs = _account_refs_by_name(realm_id, {category_account})
     category_ref = category_refs[category_account]
@@ -156,8 +159,11 @@ def create_deposit(
     category_account: str,
     realm_id: str,
     private_note: str = "",
-) -> dict:
-    """Create a QuickBooks Deposit (income/cash in) from a suggestion."""
+) -> dict[str, Any]:
+    """Create a QuickBooks Deposit (income/cash in) from a suggestion.
+
+    ``category_account`` must exist as an active ``QBAccount.name`` for ``realm_id``.
+    """
     bank_ref = _account_ref_by_id(realm_id, account_id)
     category_refs = _account_refs_by_name(realm_id, {category_account})
     category_ref = category_refs[category_account]
@@ -189,11 +195,16 @@ def create_deposit(
 
 def apply_suggestion(
     qb_client: QuickBooks,
-    suggestion: dict,
+    suggestion: dict[str, Any],
     realm_id: str,
     private_note: str = "",
-) -> dict:
-    """Apply a single suggestion by dispatching to the correct QB write helper."""
+) -> dict[str, Any]:
+    """Apply a single suggestion by dispatching to the correct QB write helper.
+
+    ``suggestion`` is the dict produced by ``core.agent.reconcile`` and must contain
+    ``type`` (journal_entry/purchase/deposit), ``date``, ``account_id``, and ``lines``.
+    Each line's ``account_name`` must resolve to an active ``QBAccount`` for the realm.
+    """
     suggestion_type = suggestion.get("type")
     txn_date = suggestion.get("date")
     if suggestion_type == "journal_entry":

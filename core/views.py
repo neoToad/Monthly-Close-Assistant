@@ -1,20 +1,19 @@
 """Views for the QuickBooks OAuth flow (Prompt 3) and the review dashboard (Prompt 13).
 
 OAuth endpoints:
-* ``qb_oauth_start`` â€” redirects the user to Intuit's authorize URL.
-* ``qb_oauth_callback`` â€” receives the code, verifies state, stores tokens.
+* ``qb_oauth_start`` — redirects the user to Intuit's authorize URL.
+* ``qb_oauth_callback`` — receives the code, verifies state, stores tokens.
 
 Dashboard endpoints:
-* ``dashboard`` â€” month selector, open flags table, close summary section.
-* ``qb_sync_now`` â€” pull the latest QuickBooks transactions.
-* ``reconcile_month`` â€” run reconciliation + anomaly detection for a month.
-* ``draft_summary`` â€” draft a close summary for a month.
-* ``flag_approve`` / ``flag_reject`` â€” update a flag status (HTMX row swap).
-* ``summary_review`` â€” mark a close summary reviewed with notes.
+* ``dashboard`` — month selector, open flags table, close summary section.
+* ``qb_sync_now`` — pull the latest QuickBooks transactions.
+* ``reconcile_month`` — run reconciliation + anomaly detection for a month.
+* ``draft_summary`` — draft a close summary for a month.
+* ``flag_approve`` / ``flag_reject`` — update a flag status (HTMX row swap).
+* ``summary_review`` — mark a close summary reviewed with notes.
 """
 from __future__ import annotations
 
-import calendar
 import datetime as dt
 import logging
 
@@ -22,9 +21,8 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from django.contrib.auth.decorators import login_required
-from django.db import models
 from django.db.models import Q, Sum
-from django.http import HttpResponseBadRequest, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
@@ -33,39 +31,40 @@ from core.agent import reconcile as reconcile_agent
 from core.agent.summary import draft_close_summary
 from core.anomaly.rules import run_anomaly_detection
 from core.bank_feed import generate_bank_feed
+from core.common.constants import BALANCE_TOLERANCE, CASH_LIKE_ACCOUNT_TYPES
+from core.common.dates import month_bounds
 from core.models import (
-    AccountReconciliationState,
     BankStatementBalance,
     CloseSummary,
     CloseSummaryStatus,
     Flag,
     FlagStatus,
-    FlagType,
     QBAccount,
     QuickBooksCompany,
-    ReconciliationStatus,
     Transaction,
 )
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.quickbooks import writes as qb_writes
-from core.reconciliation.engine import BALANCE_TOLERANCE, run_reconciliation
+from core.reconciliation.engine import compute_posted_total, run_reconciliation
+from core.services.reconciliation import apply_account_reconciliation_suggestions
 
 logger = logging.getLogger(__name__)
-
-#: QuickBooks account types treated as cash or cash-like for bank reconciliation.
-CASH_LIKE_ACCOUNT_TYPES = {"Bank", "Other Current Asset"}
 
 
 @login_required
 @require_http_methods(["GET"])
-def reconcile_account_suggest(request, qb_account_id: str):
-    """Show the reconcile-account modal with AI-generated suggestions."""
+def reconcile_account_suggest(request, qb_account_id: str) -> HttpResponse:
+    """Show the reconcile-account modal with AI-generated suggestions.
+
+    Builds a QuickBooks client when an active token is available so the agent can
+    optionally include live current-balance data. If the client cannot be built,
+    the modal still renders with deterministic suggestions; a warning is logged.
+    """
     month = request.GET.get("month") or dt.date.today().strftime("%Y-%m")
     realm_id = request.GET.get("realm_id") or _default_realm_id() or ""
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
@@ -105,135 +104,64 @@ def reconcile_account_suggest(request, qb_account_id: str):
 
 @login_required
 @require_POST
-def reconcile_account_apply(request, qb_account_id: str):
-    """Preview or apply selected reconciliation suggestions to QuickBooks."""
+def reconcile_account_apply(request, qb_account_id: str) -> HttpResponse:
+    """Preview or apply selected reconciliation suggestions to QuickBooks.
+
+    Delegates all business orchestration to
+    ``core.services.reconciliation.apply_account_reconciliation_suggestions``. This
+    view only validates HTTP parameters and renders the appropriate partial.
+    """
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
     realm_id = request.POST.get("realm_id") or _default_realm_id() or ""
     suggestion_ids = request.POST.getlist("suggestion_ids")
     dry_run = request.POST.get("dry_run", "true").lower() not in ("false", "0", "")
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
-    suggestions_result = reconcile_agent.suggest_account_fixes(
-        month, realm_id, qb_account_id
+    result = apply_account_reconciliation_suggestions(
+        month=month,
+        realm_id=realm_id,
+        qb_account_id=qb_account_id,
+        suggestion_ids=suggestion_ids,
+        dry_run=dry_run,
+        user=request.user,
     )
-    all_suggestions = suggestions_result["suggestions"]
-    selected = [s for s in all_suggestions if s.get("id") in suggestion_ids]
 
-    if dry_run or not selected:
-        preview_objects = [
-            {
-                "object_type": s["type"].replace("_", " ").title(),
-                "description": s.get("description", ""),
-                "amount": s.get("amount", ""),
-            }
-            for s in selected
-        ]
+    if result["dry_run"]:
         context = {
             "month": month,
             "realm_id": realm_id,
             "qb_account_id": qb_account_id,
-            "account_name": suggestions_result["account_name"],
-            "statement_balance": suggestions_result["statement_balance"] or Decimal("0"),
-            "posted_total": suggestions_result["posted_total"],
-            "difference": suggestions_result["difference"] or Decimal("0"),
-            "suggestions": all_suggestions,
+            "account_name": result["account_name"],
+            "statement_balance": result["statement_balance"],
+            "posted_total": result["posted_total"],
+            "difference": result["difference"],
+            "suggestions": result["suggestions"],
             "preview": True,
-            "preview_objects": preview_objects,
+            "preview_objects": result["preview_objects"],
             "environment": qb_client.get_environment(),
         }
         return render(request, "core/reconcile_account_modal.html", context)
 
-    # Confirmation path: require an active QB token.
-    token = qb_tokens.get_active_token(realm_id=realm_id)
-    if token is None:
+    if not result["success"]:
         context = _bank_balances_context(month, realm_id=realm_id)
         context["month"] = month
-        context["notice"] = "QuickBooks is not connected. Please connect QuickBooks first."
+        context["notice"] = result["error"] or "Reconciliation apply failed."
         return render(request, "core/bank_balances_section.html", context)
-
-    try:
-        qb = qb_client.build_quickbooks_client(token)
-    except Exception as exc:  # noqa: BLE001
-        context = _bank_balances_context(month, realm_id=realm_id)
-        context["month"] = month
-        context["notice"] = f"Could not build QuickBooks client: {exc}"
-        return render(request, "core/bank_balances_section.html", context)
-
-    created_objects: list[dict] = []
-    try:
-        for suggestion in selected:
-            created = qb_writes.apply_suggestion(
-                qb,
-                suggestion,
-                realm_id=realm_id,
-                private_note=f"AI-assisted reconciliation for {month} — {suggestion.get('description', '')}",
-            )
-            created_objects.append(created)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("apply_suggestion failed for %s/%s", realm_id, qb_account_id)
-        context = _bank_balances_context(month, realm_id=realm_id)
-        context["month"] = month
-        context["notice"] = f"QuickBooks write failed: {exc}"
-        return render(request, "core/bank_balances_section.html", context)
-
-    # Pull the new transactions into the local DB and re-check balances.
-    try:
-        qb_client.sync_transactions(qb, qb_token=token, realm_id=realm_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Post-apply sync failed for %s/%s: %s", realm_id, qb_account_id, exc)
-    run_reconciliation(month, realm_id=realm_id)
-
-    # Record applied suggestion ids on the reconciliation state.
-    company = QuickBooksCompany.objects.for_realm(realm_id)
-    try:
-        state = AccountReconciliationState.objects.get(
-            company=company, qb_account_id=qb_account_id, month=month
-        )
-        applied = set(state.applied_suggestions or [])
-        applied.update(suggestion_ids)
-        state.applied_suggestions = list(applied)
-        if state.difference and abs(state.difference) <= BALANCE_TOLERANCE:
-            state.status = ReconciliationStatus.RECONCILED
-        else:
-            state.status = ReconciliationStatus.IN_PROGRESS
-        state.save(update_fields=["applied_suggestions", "status"])
-    except AccountReconciliationState.DoesNotExist:
-        pass
-
-    # Update the balance-reconciliation flag audit note.
-    try:
-        balance = BankStatementBalance.objects.get(
-            company=company, qb_account_id=qb_account_id, month=month
-        )
-        flag = Flag.objects.filter(
-            bank_statement_balance=balance,
-            flag_type=FlagType.BALANCE_RECONCILIATION,
-            status=FlagStatus.OPEN,
-        ).first()
-        if flag:
-            flag.notes = (
-                f"Created {len(created_objects)} QuickBooks object(s): "
-                + ", ".join(f"{obj['object_type']} {obj['id']}" for obj in created_objects)
-                + "."
-            )
-            flag.save(update_fields=["notes"])
-    except BankStatementBalance.DoesNotExist:
-        pass
 
     context = _bank_balances_context(month, realm_id=realm_id)
     context["month"] = month
-    context["notice"] = (
-        f"Applied {len(created_objects)} adjustment(s) to QuickBooks for {suggestions_result['account_name']}."
+    context["notice"] = result["notice"] or (
+        f"Applied {len(result['created_objects'])} adjustment(s) to QuickBooks for {result['account_name']}."
     )
     return render(request, "core/bank_balances_section.html", context)
 
 
 @require_http_methods(["GET"])
-def home(request):
+def home(request) -> HttpResponse:
     """Landing page for anonymous users; redirect authenticated users to the dashboard."""
     if request.user.is_authenticated:
         return HttpResponseRedirect(reverse("core:dashboard"))
@@ -241,7 +169,7 @@ def home(request):
 
 
 @require_http_methods(["GET"])
-def qb_oauth_start(request):
+def qb_oauth_start(request) -> HttpResponse:
     """Begin the OAuth flow: redirect to Intuit's authorize URL."""
     try:
         url = qb_client.get_authorization_url(request.session)
@@ -251,7 +179,7 @@ def qb_oauth_start(request):
 
 
 @require_http_methods(["GET"])
-def qb_oauth_callback(request):
+def qb_oauth_callback(request) -> HttpResponse:
     """Complete the OAuth flow: verify state, exchange the code, store tokens."""
     code = request.GET.get("code")
     realm_id = request.GET.get("realmId")
@@ -268,7 +196,7 @@ def qb_oauth_callback(request):
         auth_client = qb_client.make_auth_client(realm_id=realm_id)
         exchanged = qb_client.exchange_code_for_tokens(auth_client, code, realm_id)
         token = qb_tokens.store_tokens(exchanged, realm_id=realm_id)
-    except Exception:  # noqa: BLE001 â€” surface any exchange/storage failure to the user
+    except Exception:  # noqa: BLE001 — surface any exchange/storage failure to the user
         return HttpResponseBadRequest("QuickBooks token exchange failed.")
 
     # Best-effort fetch of the company display name; never block the OAuth redirect.
@@ -289,14 +217,6 @@ def qb_oauth_callback(request):
 # ---------------------------------------------------------------------------
 
 
-def _month_bounds(month: str) -> tuple[dt.date, dt.date]:
-    """Return (first_day, last_day) for a ``YYYY-MM`` string."""
-    year, mon = int(month[:4]), int(month[5:7])
-    first = dt.date(year, mon, 1)
-    last = dt.date(year, mon, calendar.monthrange(year, mon)[1])
-    return first, last
-
-
 def _available_months(realm_id: Optional[str] = None) -> list[str]:
     """Distinct months that have at least one transaction, newest first."""
     qs = Transaction.objects.all()
@@ -315,19 +235,17 @@ def _bank_balances_context(month: str, realm_id: Optional[str] = None) -> dict[s
     - ``cash_accounts``: cash-like QBAccount rows for the realm/month, used to
       populate the "set balance" form.
     """
-    first, last = _month_bounds(month)
-
     balances_qs = BankStatementBalance.objects.filter(month=month)
     if realm_id:
         balances_qs = balances_qs.filter(realm_id=realm_id)
 
     snapshots: list[dict[str, Any]] = []
     for balance in balances_qs:
-        posted_total = Transaction.objects.filter(
+        posted_total = compute_posted_total(
+            month,
+            balance.account_name,
             realm_id=balance.realm_id,
-            gl_account=balance.account_name,
-            date__range=(first, last),
-        ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0")
+        )
         difference = balance.ending_balance - posted_total
         snapshots.append(
             {
@@ -355,9 +273,9 @@ def _bank_balances_context(month: str, realm_id: Optional[str] = None) -> dict[s
     }
 
 
-def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict:
+def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
     """Build the dashboard context for ``month`` and optional ``realm_id``."""
-    first, last = _month_bounds(month)
+    first, last = month_bounds(month)
 
     flag_filters = Q(transaction__date__range=(first, last)) | Q(
         bank_transaction__date__range=(first, last)
@@ -418,7 +336,7 @@ def _request_realm_id(request) -> Optional[str]:
 
 def _render_dashboard(
     request, month: str, realm_id: Optional[str] = None, notice: str = ""
-):
+) -> HttpResponse:
     """Render the dashboard (full page or HTMX partial) for ``month`` and ``realm_id``."""
     context = _dashboard_context(month, realm_id=realm_id)
     context["notice"] = notice
@@ -433,7 +351,7 @@ def _render_dashboard(
 
 @login_required
 @require_http_methods(["GET"])
-def dashboard(request):
+def dashboard(request) -> HttpResponse:
     """Render the monthly close review dashboard for a selected company and month."""
     realm_id = request.GET.get("company") or _default_realm_id()
     month = request.GET.get("month")
@@ -442,7 +360,7 @@ def dashboard(request):
         month = months[0] if months else dt.date.today().strftime("%Y-%m")
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
@@ -451,7 +369,7 @@ def dashboard(request):
 
 @login_required
 @require_POST
-def qb_sync_now(request):
+def qb_sync_now(request) -> HttpResponse:
     """Pull the latest QuickBooks transactions and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
     realm_id = _request_realm_id(request)
@@ -490,13 +408,13 @@ def qb_sync_now(request):
 
 @login_required
 @require_POST
-def reconcile_month(request):
+def reconcile_month(request) -> HttpResponse:
     """Run reconciliation + anomaly detection for a month and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
     realm_id = _request_realm_id(request)
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
@@ -511,13 +429,13 @@ def reconcile_month(request):
 
 @login_required
 @require_POST
-def draft_summary(request):
+def draft_summary(request) -> HttpResponse:
     """Draft (or re-draft) a close summary for a month and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
     realm_id = _request_realm_id(request)
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
@@ -537,7 +455,7 @@ def draft_summary(request):
 
 @login_required
 @require_POST
-def flag_approve(request, flag_id: int):
+def flag_approve(request, flag_id: int) -> HttpResponse:
     """Approve a flag and return its updated table row partial."""
     flag = get_object_or_404(Flag, id=flag_id)
     flag.status = FlagStatus.APPROVED
@@ -547,7 +465,7 @@ def flag_approve(request, flag_id: int):
 
 @login_required
 @require_POST
-def flag_reject(request, flag_id: int):
+def flag_reject(request, flag_id: int) -> HttpResponse:
     """Reject a flag and return its updated table row partial."""
     flag = get_object_or_404(Flag, id=flag_id)
     flag.status = FlagStatus.REJECTED
@@ -557,7 +475,7 @@ def flag_reject(request, flag_id: int):
 
 @login_required
 @require_POST
-def set_bank_balance(request):
+def set_bank_balance(request) -> HttpResponse:
     """Create or update a ``BankStatementBalance`` row from the dashboard.
 
     Expects ``month``, ``realm_id``, ``qb_account_id``, and ``ending_balance`` in POST
@@ -572,7 +490,7 @@ def set_bank_balance(request):
         return HttpResponseBadRequest("Month, account, and balance are required.")
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
@@ -608,13 +526,13 @@ def set_bank_balance(request):
 
 @login_required
 @require_POST
-def generate_bank_feed_view(request):
+def generate_bank_feed_view(request) -> HttpResponse:
     """Generate synthetic BankTransaction records for the month and refresh dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
     realm_id = _request_realm_id(request)
 
     try:
-        _month_bounds(month)
+        month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
@@ -658,7 +576,7 @@ def generate_bank_feed_view(request):
 
 @login_required
 @require_POST
-def summary_review(request, month: str):
+def summary_review(request, month: str) -> HttpResponse:
     """Mark a company's close summary for ``month`` as reviewed with optional notes."""
     realm_id = request.POST.get("realm_id")
     filters = {"month": month}

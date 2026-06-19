@@ -15,12 +15,10 @@ from typing import Optional
 
 from django.core.management.base import BaseCommand, CommandError
 
+from core.common.constants import CASH_LIKE_ACCOUNT_TYPES
 from core.models import BankStatementBalance, QBAccount, QuickBooksCompany
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-
-#: QuickBooks account types treated as cash or cash-like for bank reconciliation.
-CASH_LIKE_ACCOUNT_TYPES = {"Bank", "Other Current Asset"}
 
 
 class Command(BaseCommand):
