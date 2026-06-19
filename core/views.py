@@ -169,7 +169,7 @@ def _bank_balances_context(month: str, realm_id: Optional[str] = None) -> dict[s
     return {
         "balances": snapshots,
         "cash_accounts": cash_accounts,
-        "has_bank_balances": bool(snapshots) or cash_accounts.exists(),
+        "has_bank_balances": bool(snapshots) or cash_accounts.exists() or bool(realm_id),
     }
 
 

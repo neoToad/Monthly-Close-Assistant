@@ -53,5 +53,7 @@
 
             <button type="submit" class="btn">Set Bank Balance</button>
         </form>
+    {% else %}
+        <p class="empty-state">No cash-like accounts found for {{ month }}. Run <strong>Sync QuickBooks</strong> to load accounts.</p>
     {% endif %}
 </div>

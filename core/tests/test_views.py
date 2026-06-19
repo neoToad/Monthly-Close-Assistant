@@ -400,6 +400,17 @@ class BankBalancesDashboardTests(TestCase):
         self.assertEqual(balance.account_name, "Operating Checking")
         self.assertEqual(balance.source, "manual")
 
+    def test_dashboard_shows_bank_balances_panel_without_accounts(self) -> None:
+        """The panel should render when a company is selected so users know what to do."""
+        _company("realm-a")
+
+        resp = self.client.get("/dashboard/?company=realm-a&month=2026-06")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bank Balances")
+        self.assertContains(resp, "No cash-like accounts found")
+        self.assertContains(resp, "Sync QuickBooks")
+
 
 class DashboardActionViewTests(TestCase):
     def setUp(self) -> None:

@@ -2,19 +2,13 @@
 
 ## Stage
 
-Company-FK refactor committed and the full test suite is green.
+Bank balance panel discoverability fix.
 
 ## Current task
 
-Awaiting the next feature or polish step. The immediate background context is
-bank-balance reconciliation (sandbox auto-seeder + dashboard panel), so the next
-likely work is polishing that feature or moving on to a new one.
+Show the Bank Balances panel even when no cash-like `QBAccount` rows exist yet,
+so users can see the feature and get a prompt to sync QuickBooks.
 
 ## Branch
 
 `feature/close-assistant-build`
-
-## Latest commit
-
-`f5fdf05` — feat(models): attach all realm-scoped models to QuickBooksCompany
-(232 tests passing).
