@@ -2,30 +2,28 @@
 
 ## Stage
 
-Executing `docs/plans/refactor_plan.md`.
+Executing `docs/plans/refactor_plan.md` Steps 1–5.
 
 ## Current task
 
-Step 1 — Audit (complete).
+Step 2.7 — Dead code cleanup (sequence item 1 of 5) — **completed**.
 
-The full architectural audit is documented in `docs/plans/refactor_plan.md`. Findings cover module structure, business-logic drift into views, duplicated helpers (`_month_bounds`, `_prior_month`, `CASH_LIKE_ACCOUNT_TYPES`, posted-GL sums), inconsistent naming, missing type hints/docstrings, error-handling gaps, test-coverage holes, dead code, and best-practice opportunities.
+All deletions confirmed safe; full core suite passes **268 tests** (down from 269 because the unused `RefreshTokensTests` class was removed along with the dead `refresh_tokens` function).
 
-No production code was changed in this step; the deliverable is the audit document itself.
+Changes made:
+- Removed unused `refresh_tokens` function and its `RefreshTokensTests` in `core/tests/test_quickbooks.py`.
+- Removed unused `_lookup_suggestion` from `core/quickbooks/writes.py`.
+- Removed `--skip-reports` argument and help text from `sync_quickbooks` command.
+- Removed unused `DATE_TOLERANCE_DAYS` import from `core/agent/reconcile.py`.
+- Removed unused `Optional` import from `core/quickbooks/writes.py`.
+- Clarified the no-op `if not force: pass` block in `seed_bank_balances` as a comment.
+- Pruned now-unused `django.utils.timezone` and `datetime.timedelta` imports in `core/quickbooks/client.py`.
 
-## Next step
+## Next task
 
-Step 2 — Refactor Plan execution, starting with the recommended sequence:
+Step 2.2.C — Centralize dates and constants (sequence item 2 of 5).
 
-1. Dead code cleanup (2.7.A–F)
-2. Centralize dates and constants (2.2.C)
-3. Type hints and docstrings pass (2.4)
-4. Extract `compute_posted_total` and grouped queries (2.1.B, 2.8.A)
-5. Extract service layer for apply flow (2.1.A)
-6. Move QB write helpers to `core/services/qb_writes.py` (2.1.C)
-7. Centralize retry/backoff (2.5.A)
-8. Add missing idempotency tests (2.6)
-9. Package reorganization (2.2.A full target)
-10. Migration squash (2.8.E)
+Create `core/common/dates.py` and `core/common/constants.py`, move duplicated helpers and thresholds, update imports across engines.
 
 ## Branch
 
@@ -33,4 +31,4 @@ Step 2 — Refactor Plan execution, starting with the recommended sequence:
 
 ## Latest commit
 
-Added `docs/plans/refactor_plan.md` and audit findings; no code changes.
+`87e4326` — docs(plans): add Step 1 audit for refactor plan.

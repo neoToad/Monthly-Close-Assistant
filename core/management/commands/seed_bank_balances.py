@@ -113,10 +113,8 @@ class Command(BaseCommand):
                 created += 1
             else:
                 updated += 1
-                if not force:
-                    # update_or_create already updated; --force only matters for the
-                    # human-readable "updated" count, which we report either way.
-                    pass
+                # update_or_create already updated the row; --force only affects the
+                # human-readable report (we count an update either way).
 
         self.stdout.write(
             f"  {realm_id}: created={created}, updated={updated}"

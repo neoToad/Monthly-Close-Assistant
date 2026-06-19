@@ -7,7 +7,6 @@ Covers the pure, mockable boundaries of the sync pipeline:
   into the internal ``Transaction`` field dict (and skipping records without an id/date).
 * ``sync_transactions`` orchestrating pull → normalize → ``get_or_create`` (idempotent
   skip-existing by ``qb_transaction_id``) and reporting counts.
-* ``refresh_tokens`` driving an ``AuthClient`` refresh and returning the new tokens.
 
 No live QuickBooks sandbox is contacted: ``pull_raw_records`` is patched everywhere.
 """
@@ -445,32 +444,6 @@ class PullRawRecordsTests(SimpleTestCase):
 
         self.assertEqual(result, {"Fake": ["record-1"]})
         self.assertIs(captured["qb"], mock_qb)
-
-
-# ---------------------------------------------------------------------------
-# refresh_tokens
-# ---------------------------------------------------------------------------
-
-
-class RefreshTokensTests(SimpleTestCase):
-    def test_refresh_drives_auth_client_and_returns_tokens(self) -> None:
-        auth_client = mock.MagicMock()
-        auth_client.refresh_token = "old-refresh"
-        # refresh() mutates the client in place (Intuit sets these attrs).
-        def fake_refresh(refresh_token=None):
-            auth_client.access_token = "new-access"
-            auth_client.refresh_token = "new-refresh"
-            auth_client.expires_in = 3600
-            auth_client.x_refresh_token_expires_in = 8700000
-        auth_client.refresh.side_effect = fake_refresh
-
-        result = qb_client.refresh_tokens(auth_client)
-        auth_client.refresh.assert_called_once()
-        self.assertEqual(result["access_token"], "new-access")
-        self.assertEqual(result["refresh_token"], "new-refresh")
-        # expiry datetimes are in the future.
-        self.assertGreater(result["access_token_expires_at"], timezone.now())
-        self.assertGreater(result["refresh_token_expires_at"], timezone.now())
 
 
 # ---------------------------------------------------------------------------

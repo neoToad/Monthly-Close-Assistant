@@ -25,7 +25,6 @@ from typing import Any, Callable, Optional
 
 from decouple import config
 from django.conf import settings
-from django.utils import timezone
 from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from quickbooks import QuickBooks
@@ -221,26 +220,6 @@ def exchange_code_for_tokens(auth_client: AuthClient, code: str, realm_id: str) 
     auth_client.realm_id = realm_id
     auth_client.get_bearer_token(auth_code=code, realm_id=realm_id)
     return auth_client
-
-
-def refresh_tokens(auth_client: AuthClient) -> dict:
-    """Refresh the access token and return the new tokens + expiry datetimes."""
-    auth_client.refresh()
-    now = timezone.now()
-    expires_in = getattr(auth_client, "expires_in", None)
-    x_refresh_expires_in = getattr(auth_client, "x_refresh_token_expires_in", None)
-    return {
-        "access_token": getattr(auth_client, "access_token", None),
-        "refresh_token": getattr(auth_client, "refresh_token", None),
-        "access_token_expires_at": (
-            now + dt.timedelta(seconds=int(expires_in)) if expires_in else None
-        ),
-        "refresh_token_expires_at": (
-            now + dt.timedelta(seconds=int(x_refresh_expires_in))
-            if x_refresh_expires_in
-            else None
-        ),
-    }
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from quickbooks import QuickBooks
 from quickbooks.objects.base import Ref
@@ -185,13 +185,6 @@ def create_deposit(
         "bank_account_id": bank_ref.value,
         "category_account_id": category_ref.value,
     }
-
-
-def _lookup_suggestion(suggestions: list[dict], suggestion_id: str) -> dict:
-    for suggestion in suggestions:
-        if suggestion.get("id") == suggestion_id:
-            return suggestion
-    raise ValueError(f"Suggestion {suggestion_id} not found")
 
 
 def apply_suggestion(

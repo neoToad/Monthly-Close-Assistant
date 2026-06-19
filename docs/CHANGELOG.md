@@ -3,6 +3,22 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## refactor(dead-code): remove unused helpers and scaffolding (refactor plan 2.7.A–F)
+
+- Removed unused `refresh_tokens` function from `core/quickbooks/client.py` and the
+  matching `RefreshTokensTests` class in `core/tests/test_quickbooks.py`.
+- Removed unused `_lookup_suggestion` helper from `core/quickbooks/writes.py`.
+- Removed the no-op `--skip-reports` argument and help text from
+  `core/management/commands/sync_quickbooks.py`.
+- Removed unused `DATE_TOLERANCE_DAYS` import from `core/agent/reconcile.py`.
+- Removed unused `Optional` import from `core/quickbooks/writes.py`.
+- Replaced the empty `if not force: pass` block in
+  `core/management/commands/seed_bank_balances.py` with an explanatory comment.
+- Pruned now-unused `django.utils.timezone` / `datetime.timedelta` imports in
+  `core/quickbooks/client.py`.
+- Full core test suite passes **268 tests** (one fewer than before because dead code's
+  dedicated tests were removed).
+
 ## docs(plans): add Step 1 audit for refactor plan
 
 - Added `docs/plans/refactor_plan.md` documenting the full Step 1 audit of the
@@ -203,8 +219,8 @@ commit, per the AGENTS.md workflow.
   before syncing and prints the name in command output.
 - Removed the spurious `get_access_token`, `get_refresh_token`, and
   `is_access_token_expired` methods from `QuickBooksCompany` (they referenced fields
-  that do not exist on that model).
-- Updated `docs/PLAN.md` decision #1, `docs/TODO.md`, and `README.md` dashboard/CI
-  sections.
-- Removed stale `core/tests/test_cicd.py` because `.github/workflows/ci.yml` was
-  deleted earlier; the full suite now passes inside Docker.
+  that do OR models. Kept as single module per Django convention.
+
+## Test Counts
+
+- After dead-code cleanup: **268 tests** passing.

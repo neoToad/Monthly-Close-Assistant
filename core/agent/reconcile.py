@@ -27,7 +27,6 @@ from core.models import (
 from core.quickbooks import client as qb_client
 from core.reconciliation.engine import (
     AMOUNT_TOLERANCE,
-    DATE_TOLERANCE_DAYS,
     _month_bounds,
 )
 

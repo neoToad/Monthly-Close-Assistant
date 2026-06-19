@@ -34,11 +34,6 @@ class Command(BaseCommand):
             action="store_true",
             help="Skip syncing the chart of accounts (QBAccount).",
         )
-        parser.add_argument(
-            "--skip-reports",
-            action="store_true",
-            help="Skip fetching report summaries (currently unused; reserved for future report sync).",
-        )
 
     def handle(self, *args, **options) -> None:
         realm_id = options.get("realm_id")
