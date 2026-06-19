@@ -2,22 +2,22 @@
 
 ## Stage
 
-Bank balance reconciliation is now exposed on the frontend dashboard.
+Company-FK refactor is complete. All realm-scoped models are now attached to
+`QuickBooksCompany` via foreign keys, with `realm_id` retained as a denormalized
+indexed filter.
 
-## Current task
+## Completed
 
-Await further instructions.
-
-## Completed work
-
-- Added a "Bank Balances" panel to the dashboard showing stored ending balances,
-  posted GL totals, and reconciliation status per cash account.
-- Added an inline "Set Bank Balance" form so reviewers can enter statement balances
-  directly from the dashboard.
-- Added distinct "Balance" styling for `BALANCE_RECONCILIATION` flags.
-- Added dashboard view tests for the bank balances panel, balance gap flags, and the
-  set-balance form.
-- Full test suite passes: **230 tests**.
+- Added `company` foreign keys to `Transaction`, `BankTransaction`, `Flag`,
+  `CloseSummary`, `QBAccount`, `BankStatementBalance`, and `QBToken`.
+- Generated and hand-edited migration `0006` to add nullable FKs, backfill via
+  `QuickBooksCompany.objects.for_realm(realm_id)`, then make the FKs non-nullable
+  and replace unique constraints.
+- Updated all creation paths (sync, tokens, bank feed, reconciliation, anomaly,
+  summary, dashboard, management commands) to resolve and write `company`.
+- Updated every test helper and fixture to pass `company`; full `core.tests`
+  suite passes **232 tests**.
+- Updated `README.md`, `docs/CHANGELOG.md`, and `docs/TODO.md`.
 
 ## Branch
 
@@ -25,4 +25,5 @@ Await further instructions.
 
 ## Next step
 
-Await further instructions.
+Commit the company-FK refactor. After that, resume bank-balance reconciliation
+polish or the next planned feature.

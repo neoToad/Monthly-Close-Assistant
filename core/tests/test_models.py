@@ -30,6 +30,13 @@ from core.models import (
 )
 
 
+def make_company(realm_id: str = "realm-a", name: str = "Demo Co") -> QuickBooksCompany:
+    """Helper: create a QuickBooksCompany row, idempotent by realm_id."""
+    return QuickBooksCompany.objects.get_or_create(
+        realm_id=realm_id, defaults={"name": name}
+    )[0]
+
+
 def make_transaction(**overrides) -> Transaction:
     """Helper: create a Transaction with sensible defaults, overridden by kwargs."""
     defaults = dict(
@@ -41,6 +48,7 @@ def make_transaction(**overrides) -> Transaction:
         qb_transaction_id="QB-123",
         source_type=SourceType.PURCHASE,
         realm_id="realm-a",
+        company=make_company("realm-a"),
     )
     defaults.update(overrides)
     return Transaction.objects.create(**defaults)
@@ -57,6 +65,7 @@ class TransactionTests(TestCase):
         self.assertEqual(tx.gl_account, "5000 - Supplies")
         self.assertEqual(tx.qb_transaction_id, "QB-123")
         self.assertEqual(tx.date, date(2025, 1, 15))
+        self.assertEqual(tx.company.realm_id, "realm-a")
 
     def test_str_representation(self) -> None:
         tx = make_transaction(vendor="Globex", amount=Decimal("12.50"))
@@ -84,9 +93,16 @@ class TransactionTests(TestCase):
             {c.value for c in valid},
         )
 
+    def test_company_cascade_delete_removes_transactions(self) -> None:
+        tx = make_transaction()
+        company = tx.company
+        company.delete()
+        self.assertFalse(Transaction.objects.filter(pk=tx.pk).exists())
+
 
 class BankStatementBalanceTests(TestCase):
     def test_create_and_fields(self) -> None:
+        company = make_company("realm-a")
         balance = BankStatementBalance.objects.create(
             realm_id="realm-a",
             qb_account_id="qb-acc-1",
@@ -95,6 +111,7 @@ class BankStatementBalanceTests(TestCase):
             ending_balance=Decimal("-3621.93"),
             source=BankStatementBalance.Source.MANUAL,
             statement_date=date(2026, 6, 30),
+            company=company,
         )
         self.assertEqual(balance.realm_id, "realm-a")
         self.assertEqual(balance.qb_account_id, "qb-acc-1")
@@ -103,14 +120,17 @@ class BankStatementBalanceTests(TestCase):
         self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
         self.assertEqual(balance.source, "manual")
         self.assertEqual(balance.statement_date, date(2026, 6, 30))
+        self.assertEqual(balance.company, company)
 
     def test_unique_together_per_realm_account_month(self) -> None:
+        company = make_company("realm-a")
         BankStatementBalance.objects.create(
             realm_id="realm-a",
             qb_account_id="qb-acc-1",
             account_name="Operating Checking",
             month="2026-06",
             ending_balance=Decimal("-3621.93"),
+            company=company,
         )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
@@ -120,20 +140,23 @@ class BankStatementBalanceTests(TestCase):
                     account_name="Operating Checking",
                     month="2026-06",
                     ending_balance=Decimal("-3500.00"),
+                    company=company,
                 )
 
     def test_same_account_allowed_in_different_realms_or_months(self) -> None:
+        company_a = make_company("realm-a")
+        company_b = make_company("realm-b")
         BankStatementBalance.objects.create(
             realm_id="realm-a", qb_account_id="qb-acc-1", account_name="Checking",
-            month="2026-06", ending_balance=Decimal("-100.00"),
+            month="2026-06", ending_balance=Decimal("-100.00"), company=company_a,
         )
         BankStatementBalance.objects.create(
             realm_id="realm-b", qb_account_id="qb-acc-1", account_name="Checking",
-            month="2026-06", ending_balance=Decimal("-200.00"),
+            month="2026-06", ending_balance=Decimal("-200.00"), company=company_b,
         )
         BankStatementBalance.objects.create(
             realm_id="realm-a", qb_account_id="qb-acc-1", account_name="Checking",
-            month="2026-07", ending_balance=Decimal("-300.00"),
+            month="2026-07", ending_balance=Decimal("-300.00"), company=company_a,
         )
         self.assertEqual(BankStatementBalance.objects.count(), 3)
 
@@ -141,6 +164,7 @@ class BankStatementBalanceTests(TestCase):
         balance = BankStatementBalance.objects.create(
             realm_id="realm-a", qb_account_id="qb-acc-1", account_name="Checking",
             month="2026-06", ending_balance=Decimal("-3621.93"),
+            company=make_company("realm-a"),
         )
         self.assertIn("Checking", str(balance))
         self.assertIn("2026-06", str(balance))
@@ -148,6 +172,7 @@ class BankStatementBalanceTests(TestCase):
 
 class QBAccountTests(TestCase):
     def test_create_and_fields(self) -> None:
+        company = make_company("realm-a")
         account = QBAccount.objects.create(
             realm_id="realm-a",
             account_id="qb-acc-1",
@@ -155,6 +180,7 @@ class QBAccountTests(TestCase):
             account_type="Bank",
             account_sub_type="Checking",
             active=True,
+            company=company,
         )
         self.assertEqual(account.realm_id, "realm-a")
         self.assertEqual(account.account_id, "qb-acc-1")
@@ -162,21 +188,26 @@ class QBAccountTests(TestCase):
         self.assertEqual(account.account_type, "Bank")
         self.assertEqual(account.account_sub_type, "Checking")
         self.assertTrue(account.active)
+        self.assertEqual(account.company, company)
 
     def test_unique_together_per_realm(self) -> None:
-        QBAccount.objects.create(realm_id="realm-a", account_id="dup", name="A")
+        company = make_company("realm-a")
+        QBAccount.objects.create(realm_id="realm-a", account_id="dup", name="A", company=company)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                QBAccount.objects.create(realm_id="realm-a", account_id="dup", name="B")
+                QBAccount.objects.create(realm_id="realm-a", account_id="dup", name="B", company=company)
 
     def test_same_account_id_allowed_in_different_realms(self) -> None:
-        QBAccount.objects.create(realm_id="realm-a", account_id="shared", name="A")
-        QBAccount.objects.create(realm_id="realm-b", account_id="shared", name="B")
+        company_a = make_company("realm-a")
+        company_b = make_company("realm-b")
+        QBAccount.objects.create(realm_id="realm-a", account_id="shared", name="A", company=company_a)
+        QBAccount.objects.create(realm_id="realm-b", account_id="shared", name="B", company=company_b)
         self.assertEqual(QBAccount.objects.count(), 2)
 
     def test_str_representation(self) -> None:
         account = QBAccount.objects.create(
-            realm_id="realm-a", account_id="qb-acc-1", name="Checking"
+            realm_id="realm-a", account_id="qb-acc-1", name="Checking",
+            company=make_company("realm-a"),
         )
         self.assertIn("Checking", str(account))
 
@@ -199,6 +230,7 @@ class BankTransactionTests(TestCase):
             vendor="Acme Corp",
             amount=Decimal("420.00"),
             realm_id="realm-a",
+            company=make_company("realm-a"),
         )
         self.assertIsNone(bt.matched_transaction_id)
 
@@ -210,6 +242,7 @@ class BankTransactionTests(TestCase):
             amount=Decimal("420.00"),
             matched_transaction_id=tx,
             realm_id=tx.realm_id,
+            company=tx.company,
         )
         self.assertEqual(bt.matched_transaction_id, tx)
         tx.delete()
@@ -220,14 +253,16 @@ class BankTransactionTests(TestCase):
 class FlagTests(TestCase):
     def test_default_status_is_open(self) -> None:
         flag = Flag.objects.create(
-            flag_type=FlagType.RECONCILIATION, reason="oops", realm_id="realm-a"
+            flag_type=FlagType.RECONCILIATION, reason="oops", realm_id="realm-a",
+            company=make_company("realm-a"),
         )
         self.assertEqual(flag.status, FlagStatus.OPEN)
         self.assertEqual(flag.status, "open")
 
     def test_default_severity_is_low(self) -> None:
         flag = Flag.objects.create(
-            flag_type=FlagType.ANOMALY, reason="weird amount", realm_id="realm-a"
+            flag_type=FlagType.ANOMALY, reason="weird amount", realm_id="realm-a",
+            company=make_company("realm-a"),
         )
         self.assertEqual(flag.severity, Severity.LOW)
 
@@ -240,48 +275,57 @@ class FlagTests(TestCase):
             severity=Severity.HIGH,
             status=FlagStatus.APPROVED,
             realm_id=tx.realm_id,
+            company=tx.company,
         )
         self.assertEqual(flag.transaction, tx)
         self.assertIsNone(flag.bank_transaction)
         self.assertEqual(flag.severity, Severity.HIGH)
         self.assertEqual(flag.status, FlagStatus.APPROVED)
         self.assertIn("452.00", flag.reason)
+        self.assertEqual(flag.company, tx.company)
 
     def test_can_reference_a_bank_transaction(self) -> None:
+        company = make_company("realm-a")
         bt = BankTransaction.objects.create(
             date=date(2025, 1, 15), vendor="Acme", amount=Decimal("10.00"),
-            realm_id="realm-a",
+            realm_id="realm-a", company=company,
         )
         flag = Flag.objects.create(
             flag_type=FlagType.ANOMALY,
             bank_transaction=bt,
             reason="duplicate",
             realm_id=bt.realm_id,
+            company=company,
         )
         self.assertEqual(flag.bank_transaction, bt)
         self.assertIsNone(flag.transaction)
 
     def test_created_at_is_set(self) -> None:
         flag = Flag.objects.create(
-            flag_type=FlagType.RECONCILIATION, reason="x", realm_id="realm-a"
+            flag_type=FlagType.RECONCILIATION, reason="x", realm_id="realm-a",
+            company=make_company("realm-a"),
         )
         self.assertIsNotNone(flag.created_at)
 
 
 class CloseSummaryTests(TestCase):
     def test_defaults_are_draft(self) -> None:
-        summary = CloseSummary.objects.create(month="2025-01", realm_id="realm-a")
+        summary = CloseSummary.objects.create(
+            month="2025-01", realm_id="realm-a", company=make_company("realm-a")
+        )
         self.assertEqual(summary.status, "draft")
         self.assertEqual(summary.summary_text, "")
         self.assertEqual(summary.reviewer_notes, "")
 
     def test_month_unique_per_realm(self) -> None:
-        CloseSummary.objects.create(month="2025-02", realm_id="realm-a")
-        CloseSummary.objects.create(month="2025-02", realm_id="realm-b")
+        CloseSummary.objects.create(month="2025-02", realm_id="realm-a", company=make_company("realm-a"))
+        CloseSummary.objects.create(month="2025-02", realm_id="realm-b", company=make_company("realm-b"))
         self.assertEqual(CloseSummary.objects.count(), 2)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                CloseSummary.objects.create(month="2025-02", realm_id="realm-a")
+                CloseSummary.objects.create(
+                    month="2025-02", realm_id="realm-a", company=make_company("realm-a")
+                )
 
     def test_reviewed_flow(self) -> None:
         summary = CloseSummary.objects.create(
@@ -290,14 +334,29 @@ class CloseSummaryTests(TestCase):
             status="reviewed",
             reviewer_notes="Looks good — approved.",
             realm_id="realm-a",
+            company=make_company("realm-a"),
         )
         self.assertEqual(summary.status, "reviewed")
         self.assertIn("software", summary.summary_text)
         self.assertIn("approved", summary.reviewer_notes)
 
     def test_created_at_is_set(self) -> None:
-        summary = CloseSummary.objects.create(month="2025-04", realm_id="realm-a")
+        summary = CloseSummary.objects.create(
+            month="2025-04", realm_id="realm-a", company=make_company("realm-a")
+        )
         self.assertIsNotNone(summary.created_at)
+
+
+class QBTokenCompanyTests(TestCase):
+    def test_token_links_to_company(self) -> None:
+        company = make_company("realm-a")
+        token = QBToken.objects.create(
+            realm_id="realm-a",
+            access_token_encrypted="at",
+            refresh_token_encrypted="rt",
+            company=company,
+        )
+        self.assertEqual(token.company, company)
 
 
 class AdminRegistrationTests(TestCase):

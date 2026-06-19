@@ -39,7 +39,9 @@ User = get_user_model()
 
 
 def _make_txn(realm_id: str = "realm-a", **overrides) -> Transaction:
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
+        company=company,
         date=dt.date(2025, 1, 15),
         vendor="Acme Corp",
         amount=Decimal("100.00"),
@@ -50,11 +52,14 @@ def _make_txn(realm_id: str = "realm-a", **overrides) -> Transaction:
         realm_id=realm_id,
     )
     defaults.update(overrides)
+    defaults["company"] = company
     return Transaction.objects.create(**defaults)
 
 
 def _make_bank_txn(realm_id: str = "realm-a", **overrides) -> BankTransaction:
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
+        company=company,
         date=dt.date(2025, 1, 15),
         vendor="Acme Corp",
         amount=Decimal("100.00"),
@@ -65,6 +70,7 @@ def _make_bank_txn(realm_id: str = "realm-a", **overrides) -> BankTransaction:
         realm_id=realm_id,
     )
     defaults.update(overrides)
+    defaults["company"] = company
     return BankTransaction.objects.create(**defaults)
 
 
@@ -99,6 +105,7 @@ class RealmIsolationReconciliationTests(TestCase):
         txn_a = _make_txn(realm_id="realm-a", qb_transaction_id="QB-A")
         _make_bank_txn(realm_id="realm-a", qb_transaction_id="QB-A", amount=Decimal("100.00"))
         Flag.objects.create(
+            company=txn_a.company,
             realm_id="realm-a",
             flag_type=FlagType.RECONCILIATION,
             transaction=txn_a,
@@ -107,6 +114,7 @@ class RealmIsolationReconciliationTests(TestCase):
         )
         txn_b = _make_txn(realm_id="realm-b", qb_transaction_id="QB-B")
         Flag.objects.create(
+            company=txn_b.company,
             realm_id="realm-b",
             flag_type=FlagType.RECONCILIATION,
             transaction=txn_b,
@@ -136,6 +144,7 @@ class RealmIsolationAnomalyTests(TestCase):
     def test_anomaly_detection_deletes_only_target_realm_anomaly_flags(self) -> None:
         txn_a = _make_txn(realm_id="realm-a", qb_transaction_id="QB-A")
         Flag.objects.create(
+            company=txn_a.company,
             realm_id="realm-a",
             flag_type=FlagType.ANOMALY,
             transaction=txn_a,
@@ -144,6 +153,7 @@ class RealmIsolationAnomalyTests(TestCase):
         )
         txn_b = _make_txn(realm_id="realm-b", qb_transaction_id="QB-B")
         Flag.objects.create(
+            company=txn_b.company,
             realm_id="realm-b",
             flag_type=FlagType.ANOMALY,
             transaction=txn_b,
@@ -209,8 +219,10 @@ class RealmIsolationCloseSummaryTests(TestCase):
 
 class RealmIsolationQBAccountTests(TestCase):
     def test_sync_accounts_scopes_by_realm(self) -> None:
-        QBAccount.objects.create(realm_id="realm-a", account_id="acc-1", name="Checking")
-        QBAccount.objects.create(realm_id="realm-b", account_id="acc-1", name="Savings")
+        company_a = QuickBooksCompany.objects.for_realm("realm-a")
+        company_b = QuickBooksCompany.objects.for_realm("realm-b")
+        QBAccount.objects.create(company=company_a, realm_id="realm-a", account_id="acc-1", name="Checking")
+        QBAccount.objects.create(company=company_b, realm_id="realm-b", account_id="acc-1", name="Savings")
 
         self.assertEqual(
             QBAccount.objects.filter(realm_id="realm-a", account_id="acc-1").count(), 1
@@ -222,8 +234,10 @@ class RealmIsolationQBAccountTests(TestCase):
 
     @mock.patch.object(qb_client.Account, "all")
     def test_sync_accounts_only_updates_target_realm(self, mock_all) -> None:
-        QBAccount.objects.create(realm_id="realm-a", account_id="acc-1", name="Old")
-        QBAccount.objects.create(realm_id="realm-b", account_id="acc-1", name="Untouched")
+        company_a = QuickBooksCompany.objects.for_realm("realm-a")
+        company_b = QuickBooksCompany.objects.for_realm("realm-b")
+        QBAccount.objects.create(company=company_a, realm_id="realm-a", account_id="acc-1", name="Old")
+        QBAccount.objects.create(company=company_b, realm_id="realm-b", account_id="acc-1", name="Untouched")
 
         mock_all.return_value = [
             SimpleNamespace(
@@ -247,8 +261,9 @@ class RealmIsolationDashboardViewTests(TestCase):
 
     def test_dashboard_defaults_to_most_recently_connected_realm(self) -> None:
         QuickBooksCompany.objects.create(realm_id="realm-a", is_connected=True)
-        QuickBooksCompany.objects.create(realm_id="realm-b", is_connected=True)
+        company_b = QuickBooksCompany.objects.create(realm_id="realm-b", is_connected=True)
         QBToken.objects.create(
+            company=company_b,
             realm_id="realm-b",
             access_token_encrypted="at",
             refresh_token_encrypted="rt",

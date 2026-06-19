@@ -18,23 +18,44 @@ from core.models import (
     Flag,
     FlagType,
     QBAccount,
+    QuickBooksCompany,
     Severity,
     Transaction,
 )
 
 
 def _make_txn(**overrides) -> Transaction:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
+        company=company,
         date=dt.date(2025, 1, 15),
         vendor="Acme Corp",
         amount=Decimal("100.00"),
         category="Office Supplies",
         gl_account="5000 - Supplies",
         qb_transaction_id="QB-1",
-        realm_id="realm-a",
+        realm_id=realm_id,
     )
     defaults.update(overrides)
+    defaults["company"] = company
     return Transaction.objects.create(**defaults)
+
+
+def _make_qb_account(**overrides) -> QBAccount:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    defaults = dict(
+        company=company,
+        realm_id=realm_id,
+        account_id="acc-1",
+        name="Checking",
+        account_type="Bank",
+        active=True,
+    )
+    defaults.update(overrides)
+    defaults["company"] = company
+    return QBAccount.objects.create(**defaults)
 
 
 class GatherInputsTests(TestCase):
@@ -54,6 +75,7 @@ class GatherInputsTests(TestCase):
 
         txn = _make_txn()
         Flag.objects.create(
+            company=txn.company,
             flag_type=FlagType.RECONCILIATION,
             transaction=txn,
             reason="Amount mismatch",
@@ -61,6 +83,7 @@ class GatherInputsTests(TestCase):
             realm_id=txn.realm_id,
         )
         Flag.objects.create(
+            company=txn.company,
             flag_type=FlagType.ANOMALY,
             transaction=txn,
             reason="Duplicate",
@@ -80,9 +103,7 @@ class GeneralLedgerCrossCheckTests(TestCase):
         from core.quickbooks import client as qb_client
 
         _make_txn(qb_transaction_id="QB-A", category="Software", amount=Decimal("200.00"))
-        QBAccount.objects.create(
-            realm_id="realm-a", account_id="acc-1", name="Checking", account_type="Bank"
-        )
+        _make_qb_account(account_id="acc-1", name="Checking")
 
         mock_api_client = mock.MagicMock()
         with mock.patch.object(qb_client, "fetch_general_ledger_summary") as mock_gl:
@@ -141,7 +162,7 @@ class DraftCloseSummaryTests(TestCase):
             "core.agent.summary.config",
             side_effect=lambda key, default="": config_values.get(key, default),
         ):
-            summary = draft_close_summary("2025-01")
+            summary = draft_close_summary("2025-01", realm_id="realm-a")
         self.assertEqual(summary.month, "2025-01")
         self.assertEqual(summary.status, CloseSummaryStatus.DRAFT)
         self.assertIn("2025-01", summary.summary_text)
@@ -151,8 +172,8 @@ class DraftCloseSummaryTests(TestCase):
         from core.agent.summary import draft_close_summary
 
         _make_txn(qb_transaction_id="QB-1")
-        first = draft_close_summary("2025-01")
-        second = draft_close_summary("2025-01")
+        first = draft_close_summary("2025-01", realm_id="realm-a")
+        second = draft_close_summary("2025-01", realm_id="realm-a")
         self.assertEqual(CloseSummary.objects.count(), 1)
         self.assertEqual(second.id, first.id)
 
@@ -163,7 +184,7 @@ class DraftCloseSummaryTests(TestCase):
         _make_txn(qb_transaction_id="QB-1", category="Office Supplies")
         fake_llm = mock.MagicMock()
         fake_llm.invoke.return_value = mock.MagicMock(content="AI-generated summary.")
-        summary = draft_close_summary("2025-01", llm=fake_llm)
+        summary = draft_close_summary("2025-01", realm_id="realm-a", llm=fake_llm)
         self.assertIn("AI-generated summary.", summary.summary_text)
         fake_llm.invoke.assert_called_once()
 

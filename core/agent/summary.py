@@ -33,6 +33,7 @@ from core.models import (
     CloseSummaryStatus,
     Flag,
     FlagStatus,
+    QuickBooksCompany,
     Transaction,
 )
 from core.quickbooks import client as qb_client
@@ -333,6 +334,8 @@ def draft_close_summary(
     and builds a Claude-backed chain; if the key is absent, it falls back to a
     deterministic summary.
     """
+    realm_id = realm_id or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
     inputs = gather_inputs(month, realm_id=realm_id, qb_api_client=qb_api_client)
     if llm is not None:
         inputs["_llm"] = llm
@@ -345,13 +348,17 @@ def draft_close_summary(
         summary_text = result["summary_text"]
 
     with transaction.atomic():
+        defaults = {
+            "realm_id": realm_id,
+            "summary_text": summary_text,
+            "status": CloseSummaryStatus.DRAFT,
+        }
+        if company:
+            defaults["company"] = company
         summary, _ = CloseSummary.objects.update_or_create(
-            realm_id=realm_id or "",
+            realm_id=realm_id,
             month=month,
-            defaults={
-                "summary_text": summary_text,
-                "status": CloseSummaryStatus.DRAFT,
-            },
+            defaults=defaults,
         )
 
     logger.info(

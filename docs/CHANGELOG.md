@@ -3,6 +3,31 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(models): attach all realm-scoped models to QuickBooksCompany
+
+- Added a `company` foreign key from `Transaction`, `BankTransaction`, `Flag`,
+  `CloseSummary`, `QBAccount`, `BankStatementBalance`, and `QBToken` to
+  `QuickBooksCompany`, with `on_delete=models.CASCADE` for referential integrity
+  and cascading cleanup.
+- Replaced `(realm_id, ...)` unique constraints with `(company, ...)` constraints;
+  kept denormalized `realm_id` as an indexed filter for CLI ergonomics and
+  backwards-compatible queries.
+- Generated migration `core/migrations/0006_alter_bankstatementbalance_unique_together_and_more.py`
+  with a `RunPython` backfill that lazily creates missing `QuickBooksCompany` rows
+  from existing `realm_id` values and links all affected rows before making the
+  foreign keys non-nullable.
+- Added `QuickBooksCompanyManager.for_realm(realm_id)` so every creation path can
+  resolve the canonical company row in one place.
+- Updated `core/quickbooks/client.py` (sync transactions/accounts),
+  `core/quickbooks/tokens.py` (store tokens), `core/bank_feed.py`,
+  `core/reconciliation/engine.py`, `core/anomaly/rules.py`, `core/agent/summary.py`,
+  and `core/views.py` to write `company` on every realm-scoped create/upsert.
+- Updated management commands `sync_quickbooks`, `generate_bank_feed`,
+  `run_reconciliation`, `generate_close_summary`, `set_bank_balance`, and
+  `seed_bank_balances` to require/accept `--realm-id` and resolve the company.
+- Updated all test helpers and fixtures to set `company`; full suite now passes
+  **232 tests**.
+
 ## feat(reconcile): add account-level bank balance reconciliation
 
 - Added `BankStatementBalance` model keyed on `(realm_id, qb_account_id, month)` to

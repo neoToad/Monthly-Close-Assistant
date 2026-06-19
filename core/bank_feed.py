@@ -17,7 +17,7 @@ from typing import Optional
 import pandas as pd
 from django.db import transaction
 
-from core.models import BankTransaction, QBAccount, SourceType, Transaction
+from core.models import BankTransaction, QBAccount, QuickBooksCompany, SourceType, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,8 @@ def generate_bank_feed(
     if seed is not None:
         random.seed(seed)
 
+    realm_id = realm_id or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     first, last = _month_bounds(month)
     txns = Transaction.objects.filter(date__range=(first, last))
     if realm_id:
@@ -145,6 +147,7 @@ def generate_bank_feed(
     existing = BankTransaction.objects.filter(date__range=(first, last))
     if realm_id:
         existing = existing.filter(realm_id=realm_id)
+    existing = existing.filter(company=company)
     if existing.exists() and not force:
         raise ValueError(
             "Bank transactions already exist for this month. "
@@ -217,7 +220,8 @@ def generate_bank_feed(
     for _, row in df.iterrows():
         bank_rows.append(
             BankTransaction(
-                realm_id=realm_id or "",
+                company=company,
+                realm_id=realm_id,
                 date=row["date"],
                 vendor=row.get("vendor") or "",
                 amount=Decimal(str(row["amount"])),

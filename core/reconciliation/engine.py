@@ -22,6 +22,7 @@ from core.models import (
     BankTransaction,
     Flag,
     FlagType,
+    QuickBooksCompany,
     Severity,
     Transaction,
 )
@@ -138,6 +139,7 @@ def check_account_balances(month: str, realm_id: Optional[str] = None) -> dict:
     flags_to_create: list[Flag] = []
     for balance in balances_qs:
         txns = Transaction.objects.filter(
+            company=balance.company,
             realm_id=balance.realm_id,
             gl_account=balance.account_name,
             date__range=(first, last),
@@ -151,6 +153,7 @@ def check_account_balances(month: str, realm_id: Optional[str] = None) -> dict:
         if abs(difference) > BALANCE_TOLERANCE:
             flags_to_create.append(
                 Flag(
+                    company=balance.company,
                     realm_id=balance.realm_id,
                     flag_type=FlagType.BALANCE_RECONCILIATION,
                     bank_statement_balance=balance,
@@ -200,6 +203,8 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
 
     Returns a summary dict with counts.
     """
+    realm_id = realm_id or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
     txn_df, bank_df = _load_dataframes(month, realm_id=realm_id)
 
     if txn_df.empty and bank_df.empty:
@@ -218,7 +223,8 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
         if match_idx is None:
             flags_to_create.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.RECONCILIATION,
                     bank_transaction_id=int(bank_row["id"]),
                     reason=(
@@ -238,7 +244,8 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
         if amount_diff > AMOUNT_TOLERANCE:
             flags_to_create.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.RECONCILIATION,
                     transaction_id=int(txn_row["id"]),
                     bank_transaction_id=int(bank_row["id"]),
@@ -253,7 +260,8 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
         elif date_diff_days > 0:
             flags_to_create.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.RECONCILIATION,
                     transaction_id=int(txn_row["id"]),
                     bank_transaction_id=int(bank_row["id"]),
@@ -273,7 +281,8 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
     for _, txn_row in txn_df[~txn_df["matched"]].iterrows():
         flags_to_create.append(
             Flag(
-                realm_id=realm_id or "",
+                company=company,
+                realm_id=realm_id,
                 flag_type=FlagType.RECONCILIATION,
                 transaction_id=int(txn_row["id"]),
                 reason=(
@@ -295,6 +304,8 @@ def run_reconciliation(month: str, realm_id: Optional[str] = None) -> dict:
         )
         if realm_id:
             delete_qs = delete_qs.filter(realm_id=realm_id)
+        if company:
+            delete_qs = delete_qs.filter(company=company)
         delete_qs.delete()
         Flag.objects.bulk_create(flags_to_create)
 

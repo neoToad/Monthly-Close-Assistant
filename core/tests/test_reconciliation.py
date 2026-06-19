@@ -12,6 +12,7 @@ from core.models import (
     Flag,
     FlagType,
     QBAccount,
+    QuickBooksCompany,
     SourceType,
     Transaction,
 )
@@ -19,7 +20,10 @@ from core.reconciliation.engine import check_account_balances, run_reconciliatio
 
 
 def _make_txn(**overrides) -> Transaction:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
+        company=company,
         date=dt.date(2026, 6, 15),
         vendor="Acme Corp",
         amount=Decimal("100.00"),
@@ -27,50 +31,47 @@ def _make_txn(**overrides) -> Transaction:
         gl_account="Operating Checking",
         qb_transaction_id="QB-1",
         source_type=SourceType.PURCHASE,
-        realm_id="realm-a",
+        realm_id=realm_id,
     )
     defaults.update(overrides)
+    defaults["company"] = company
     return Transaction.objects.create(**defaults)
+
+
+def _make_bank_balance(**overrides) -> BankStatementBalance:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    defaults = dict(
+        company=company,
+        realm_id=realm_id,
+        qb_account_id="qb-acc-1",
+        account_name="Operating Checking",
+        month="2026-06",
+        ending_balance=Decimal("0.00"),
+        source=BankStatementBalance.Source.MANUAL,
+    )
+    defaults.update(overrides)
+    defaults["company"] = company
+    return BankStatementBalance.objects.create(**defaults)
 
 
 class CheckAccountBalancesTests(TestCase):
     def test_exact_match_creates_no_flag(self) -> None:
         _make_txn(amount=Decimal("3621.93"))
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("3621.93"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        _make_bank_balance(ending_balance=Decimal("3621.93"))
         result = check_account_balances("2026-06", realm_id="realm-a")
         self.assertEqual(result["balance_flags_created"], 0)
         self.assertEqual(Flag.objects.filter(flag_type=FlagType.BALANCE_RECONCILIATION).count(), 0)
 
     def test_small_difference_within_tolerance_creates_no_flag(self) -> None:
         _make_txn(amount=Decimal("100.00"))
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("100.005"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        _make_bank_balance(ending_balance=Decimal("100.005"))
         result = check_account_balances("2026-06", realm_id="realm-a")
         self.assertEqual(result["balance_flags_created"], 0)
 
     def test_large_difference_creates_high_severity_flag(self) -> None:
         _make_txn(amount=Decimal("568.38"))
-        balance = BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("-3621.93"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        balance = _make_bank_balance(ending_balance=Decimal("-3621.93"))
         result = check_account_balances("2026-06", realm_id="realm-a")
         self.assertEqual(result["balance_flags_created"], 1)
         flag = Flag.objects.get(flag_type=FlagType.BALANCE_RECONCILIATION)
@@ -89,28 +90,14 @@ class CheckAccountBalancesTests(TestCase):
     def test_realm_isolation(self) -> None:
         _make_txn(realm_id="realm-a", amount=Decimal("568.38"))
         _make_txn(realm_id="realm-b", amount=Decimal("999.99"))
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("-3621.93"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        _make_bank_balance(realm_id="realm-a", ending_balance=Decimal("-3621.93"))
         result = check_account_balances("2026-06", realm_id="realm-a")
         self.assertEqual(result["balance_flags_created"], 1)
         self.assertEqual(Flag.objects.filter(realm_id="realm-b").count(), 0)
 
     def test_idempotent_runs_replace_existing_balance_flag(self) -> None:
         _make_txn(amount=Decimal("568.38"))
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("-3621.93"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        _make_bank_balance(ending_balance=Decimal("-3621.93"))
         check_account_balances("2026-06", realm_id="realm-a")
         first_flag_id = Flag.objects.get(flag_type=FlagType.BALANCE_RECONCILIATION).id
 
@@ -123,14 +110,7 @@ class CheckAccountBalancesTests(TestCase):
 class RunReconciliationBalanceTests(TestCase):
     def test_balance_flag_included_in_reconciliation_summary(self) -> None:
         _make_txn(amount=Decimal("568.38"))
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("-3621.93"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        _make_bank_balance(ending_balance=Decimal("-3621.93"))
         result = run_reconciliation("2026-06", realm_id="realm-a")
         self.assertEqual(result["balance_flags_created"], 1)
         self.assertEqual(Flag.objects.filter(flag_type=FlagType.BALANCE_RECONCILIATION).count(), 1)

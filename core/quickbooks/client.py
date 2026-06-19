@@ -39,7 +39,7 @@ from quickbooks.objects.journalentry import JournalEntry
 from quickbooks.objects.purchase import Purchase
 from quickbooks.objects.vendorcredit import VendorCredit
 
-from core.models import QBAccount, Transaction
+from core.models import QBAccount, QuickBooksCompany, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -414,6 +414,7 @@ def sync_transactions(
     API calls ultimately fail.
     """
     realm_id = realm_id or getattr(qb_token, "realm_id", None) or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     try:
         raw = pull_raw_records(qb_client, qb_token=qb_token)
     except Exception as exc:  # noqa: BLE001 — final API failure is reported, not crashed
@@ -440,8 +441,9 @@ def sync_transactions(
                 k: v for k, v in normalized.items() if k != "qb_transaction_id"
             }
             defaults["realm_id"] = realm_id
+            defaults["company"] = company
             _obj, was_created = Transaction.objects.get_or_create(
-                realm_id=realm_id,
+                company=company,
                 qb_transaction_id=normalized["qb_transaction_id"],
                 defaults=defaults,
             )
@@ -504,10 +506,11 @@ def sync_accounts(
 ) -> dict:
     """Pull the QuickBooks chart of accounts and upsert into ``QBAccount``.
 
-    Idempotency is keyed on ``(realm_id, account_id)``. Existing rows are updated
+    Idempotency is keyed on ``(company, account_id)``. Existing rows are updated
     so names, types, and active status stay in sync with QBO.
     """
     realm_id = realm_id or getattr(qb_token, "realm_id", None) or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id)
 
     def _fetch(client: QuickBooks) -> list:
         return Account.all(qb=client)
@@ -531,13 +534,14 @@ def sync_accounts(
             continue
 
         defaults = {
+            "realm_id": realm_id,
             "name": name,
             "account_type": str(getattr(account, "AccountType", "") or ""),
             "account_sub_type": str(getattr(account, "AccountSubType", "") or ""),
             "active": bool(getattr(account, "Active", True)),
         }
         obj, was_created = QBAccount.objects.update_or_create(
-            realm_id=realm_id,
+            company=company,
             account_id=account_id,
             defaults=defaults,
         )

@@ -19,13 +19,17 @@ from core.models import (
     Flag,
     FlagType,
     QBAccount,
+    QuickBooksCompany,
     SourceType,
     Transaction,
 )
 
 
 def _make_txn(**overrides) -> Transaction:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
+        company=company,
         date=dt.date(2025, 1, 15),
         vendor="Acme Corp",
         amount=Decimal("100.00"),
@@ -33,10 +37,59 @@ def _make_txn(**overrides) -> Transaction:
         gl_account="5000 - Supplies",
         qb_transaction_id="QB-1",
         source_type=SourceType.PURCHASE,
-        realm_id="realm-a",
+        realm_id=realm_id,
     )
     defaults.update(overrides)
+    defaults["company"] = company
     return Transaction.objects.create(**defaults)
+
+
+def _make_bank_txn(**overrides) -> BankTransaction:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    defaults = dict(
+        company=company,
+        realm_id=realm_id,
+        date=dt.date(2025, 1, 15),
+        vendor="Acme Corp",
+        amount=Decimal("100.00"),
+    )
+    defaults.update(overrides)
+    defaults["company"] = company
+    return BankTransaction.objects.create(**defaults)
+
+
+def _make_qb_account(**overrides) -> QBAccount:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    defaults = dict(
+        company=company,
+        realm_id=realm_id,
+        account_id="acc-1",
+        name="Test Account",
+        account_type="Bank",
+        active=True,
+    )
+    defaults.update(overrides)
+    defaults["company"] = company
+    return QBAccount.objects.create(**defaults)
+
+
+def _make_bank_balance(**overrides) -> BankStatementBalance:
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    defaults = dict(
+        company=company,
+        realm_id=realm_id,
+        qb_account_id="qb-acc-1",
+        account_name="Operating Checking",
+        month="2026-06",
+        ending_balance=Decimal("0.00"),
+        source=BankStatementBalance.Source.MANUAL,
+    )
+    defaults.update(overrides)
+    defaults["company"] = company
+    return BankStatementBalance.objects.create(**defaults)
 
 
 class SetBankBalanceCommandTests(TestCase):
@@ -62,14 +115,7 @@ class SetBankBalanceCommandTests(TestCase):
         self.assertIn("created", out.getvalue().lower())
 
     def test_updates_existing_balance_for_same_account_month(self) -> None:
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
-            account_name="Operating Checking",
-            month="2026-06",
-            ending_balance=Decimal("-1000.00"),
-            source=BankStatementBalance.Source.MANUAL,
-        )
+        _make_bank_balance(ending_balance=Decimal("-1000.00"))
         call_command(
             "set_bank_balance",
             "2026-06",
@@ -105,9 +151,8 @@ class SeedBankBalancesCommandTests(TestCase):
         from core.quickbooks import client as qb_client
         from core.quickbooks import tokens as qb_tokens
 
-        QBAccount.objects.create(
-            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
-            account_type="Bank",
+        _make_qb_account(
+            account_id="qb-acc-1", name="Operating Checking", account_type="Bank"
         )
 
         with mock.patch.object(
@@ -139,17 +184,12 @@ class SeedBankBalancesCommandTests(TestCase):
         from core.quickbooks import client as qb_client
         from core.quickbooks import tokens as qb_tokens
 
-        QBAccount.objects.create(
-            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
-            account_type="Bank",
+        _make_qb_account(
+            account_id="qb-acc-1", name="Operating Checking", account_type="Bank"
         )
-        BankStatementBalance.objects.create(
-            realm_id="realm-a",
-            qb_account_id="qb-acc-1",
+        _make_bank_balance(
             account_name="Old Name",
-            month="2026-06",
             ending_balance=Decimal("-1000.00"),
-            source=BankStatementBalance.Source.MANUAL,
         )
 
         with mock.patch.object(
@@ -172,7 +212,7 @@ class SeedBankBalancesCommandTests(TestCase):
 class GenerateBankFeedCommandTests(TestCase):
     def test_no_transactions_prints_warning(self) -> None:
         out = StringIO()
-        call_command("generate_bank_feed", "2025-01", stdout=out)
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertIn("no transactions", out.getvalue().lower())
         self.assertEqual(BankTransaction.objects.count(), 0)
 
@@ -181,7 +221,7 @@ class GenerateBankFeedCommandTests(TestCase):
         _make_txn(qb_transaction_id="QB-B", source_type=SourceType.BILL)
         _make_txn(qb_transaction_id="QB-BP", source_type=SourceType.BILL_PAYMENT)
 
-        call_command("generate_bank_feed", "2025-01", "--cash-only", "--drop-rate", "0")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", "--cash-only", "--drop-rate", "0")
 
         source_types = set(BankTransaction.objects.values_list("source_type", flat=True))
         self.assertIn(SourceType.PURCHASE, source_types)
@@ -196,21 +236,19 @@ class GenerateBankFeedCommandTests(TestCase):
             source_type=SourceType.JOURNAL_ENTRY,
             gl_account="Operating Checking",
         )
-        QBAccount.objects.create(
-            realm_id="realm-a", account_id="acc-1", name="Operating Checking",
-            account_type="Bank",
+        _make_qb_account(
+            account_id="acc-1", name="Operating Checking", account_type="Bank"
         )
         _make_txn(
             qb_transaction_id="QB-JE-OTHER",
             source_type=SourceType.JOURNAL_ENTRY,
             gl_account="Depreciation Expense",
         )
-        QBAccount.objects.create(
-            realm_id="realm-a", account_id="acc-2", name="Depreciation Expense",
-            account_type="Expense",
+        _make_qb_account(
+            account_id="acc-2", name="Depreciation Expense", account_type="Expense"
         )
 
-        call_command("generate_bank_feed", "2025-01", "--cash-only")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", "--cash-only")
 
         source_types = set(BankTransaction.objects.values_list("source_type", flat=True))
         self.assertIn(SourceType.JOURNAL_ENTRY, source_types)
@@ -227,7 +265,7 @@ class GenerateBankFeedCommandTests(TestCase):
             gl_account="Some Account",
         )
 
-        call_command("generate_bank_feed", "2025-01", "--cash-only")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", "--cash-only")
 
         self.assertEqual(
             BankTransaction.objects.filter(source_type=SourceType.JOURNAL_ENTRY).count(), 1
@@ -242,7 +280,7 @@ class GenerateBankFeedCommandTests(TestCase):
             )
 
         out = StringIO()
-        call_command("generate_bank_feed", "2025-01", stdout=out)
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", stdout=out)
 
         self.assertGreater(BankTransaction.objects.count(), 0)
         output = out.getvalue()
@@ -255,7 +293,7 @@ class GenerateBankFeedCommandTests(TestCase):
 
     def test_force_flag_overwrites_existing_bank_data(self) -> None:
         _make_txn(qb_transaction_id="QB-A", amount=Decimal("50.00"))
-        call_command("generate_bank_feed", "2025-01")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a")
         first_count = BankTransaction.objects.count()
         self.assertGreater(first_count, 0)
 
@@ -264,42 +302,42 @@ class GenerateBankFeedCommandTests(TestCase):
 
         out = StringIO()
         with self.assertRaises(CommandError):
-            call_command("generate_bank_feed", "2025-01", stdout=out)
+            call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", stdout=out)
 
         # With --force, it regenerates.
-        call_command("generate_bank_feed", "2025-01", "--force")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", "--force")
         self.assertEqual(BankTransaction.objects.count(), first_count)
 
     def test_preserves_other_months(self) -> None:
         _make_txn(qb_transaction_id="QB-Jan", date=dt.date(2025, 1, 10))
         _make_txn(qb_transaction_id="QB-Feb", date=dt.date(2025, 2, 10))
-        call_command("generate_bank_feed", "2025-01")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a")
         self.assertEqual(BankTransaction.objects.filter(date__month=2).count(), 0)
 
 
 class RunReconciliationCommandTests(TestCase):
     def test_no_data_exits_cleanly(self) -> None:
         out = StringIO()
-        call_command("run_reconciliation", "2025-01", stdout=out)
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertIn("no data", out.getvalue().lower())
         self.assertEqual(Flag.objects.count(), 0)
 
     def test_clean_match_creates_no_flags(self) -> None:
         txn = _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
-        BankTransaction.objects.create(
+        _make_bank_txn(
             date=txn.date, vendor=txn.vendor, amount=txn.amount,
             qb_transaction_id=txn.qb_transaction_id,
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         self.assertEqual(Flag.objects.filter(flag_type=FlagType.RECONCILIATION).count(), 0)
 
     def test_amount_mismatch_flag(self) -> None:
         txn = _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
-        BankTransaction.objects.create(
+        _make_bank_txn(
             date=txn.date, vendor=txn.vendor, amount=Decimal("102.50"),
             qb_transaction_id=txn.qb_transaction_id,
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.RECONCILIATION)
         self.assertEqual(flags.count(), 1)
         self.assertIn("$102.50", flags.first().reason)
@@ -308,37 +346,37 @@ class RunReconciliationCommandTests(TestCase):
     def test_date_mismatch_beyond_tolerance(self) -> None:
         """A 5-day date gap exceeds the 1-day tolerance, so both sides are unmatched."""
         txn = _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
-        BankTransaction.objects.create(
+        _make_bank_txn(
             date=dt.date(2025, 1, 20), vendor=txn.vendor, amount=txn.amount,
             qb_transaction_id=txn.qb_transaction_id,
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.RECONCILIATION)
         self.assertEqual(flags.count(), 2)
 
     def test_date_mismatch_within_tolerance_flag(self) -> None:
         txn = _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
-        BankTransaction.objects.create(
+        _make_bank_txn(
             date=dt.date(2025, 1, 16), vendor=txn.vendor, amount=txn.amount,
             qb_transaction_id=txn.qb_transaction_id,
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.RECONCILIATION)
         self.assertEqual(flags.count(), 1)
         self.assertIn("date", flags.first().reason.lower())
 
     def test_missing_bank_transaction_flag(self) -> None:
         _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.RECONCILIATION)
         self.assertEqual(flags.count(), 1)
         self.assertIn("bank", flags.first().reason.lower())
 
     def test_missing_gl_transaction_flag(self) -> None:
-        BankTransaction.objects.create(
+        _make_bank_txn(
             date=dt.date(2025, 1, 15), vendor="Acme Corp", amount=Decimal("100.00"),
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.RECONCILIATION)
         self.assertEqual(flags.count(), 1)
         self.assertIn("gl", flags.first().reason.lower())
@@ -346,15 +384,15 @@ class RunReconciliationCommandTests(TestCase):
     def test_reconciliation_is_idempotent(self) -> None:
         """Re-running run_reconciliation must not duplicate reconciliation flags."""
         txn = _make_txn(qb_transaction_id="QB-1", amount=Decimal("100.00"))
-        BankTransaction.objects.create(
+        _make_bank_txn(
             date=txn.date, vendor=txn.vendor, amount=Decimal("102.50"),
             qb_transaction_id=txn.qb_transaction_id,
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         first_count = Flag.objects.filter(flag_type=FlagType.RECONCILIATION).count()
         self.assertGreater(first_count, 0)
 
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         second_count = Flag.objects.filter(flag_type=FlagType.RECONCILIATION).count()
         self.assertEqual(second_count, first_count)
 
@@ -375,7 +413,7 @@ class CloseSummaryCommandTests(TestCase):
             "core.agent.summary.config",
             side_effect=lambda key, default="": config_values.get(key, default),
         ):
-            call_command("generate_close_summary", "2025-01", stdout=out)
+            call_command("generate_close_summary", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertEqual(CloseSummary.objects.count(), 1)
         summary = CloseSummary.objects.first()
         self.assertEqual(summary.status, "draft")
@@ -387,7 +425,7 @@ class CloseSummaryCommandTests(TestCase):
 
         _make_txn(qb_transaction_id="QB-1", category="Software", amount=Decimal("250.00"))
         out = StringIO()
-        call_command("generate_close_summary", "2025-01", stdout=out)
+        call_command("generate_close_summary", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertEqual(CloseSummary.objects.count(), 1)
         summary = CloseSummary.objects.first()
         self.assertIn("Software", summary.summary_text)
@@ -396,7 +434,7 @@ class CloseSummaryCommandTests(TestCase):
 class AnomalyDetectionCommandTests(TestCase):
     def test_no_data_exits_cleanly(self) -> None:
         out = StringIO()
-        call_command("run_reconciliation", "2025-01", stdout=out)
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertIn("no data", out.getvalue().lower())
         self.assertEqual(Flag.objects.filter(flag_type=FlagType.ANOMALY).count(), 0)
 
@@ -418,7 +456,7 @@ class AnomalyDetectionCommandTests(TestCase):
             qb_transaction_id="QB-outlier", vendor="Acme Corp",
             amount=Decimal("500.00"), date=dt.date(2025, 1, 15),
         )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
         self.assertGreaterEqual(flags.count(), 1)
         self.assertTrue(
@@ -430,7 +468,7 @@ class AnomalyDetectionCommandTests(TestCase):
     def test_duplicate_within_7_day_window(self) -> None:
         _make_txn(qb_transaction_id="QB-dup-1", amount=Decimal("75.00"), date=dt.date(2025, 1, 5))
         _make_txn(qb_transaction_id="QB-dup-2", amount=Decimal("75.00"), date=dt.date(2025, 1, 7))
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
         self.assertGreaterEqual(flags.count(), 1)
         self.assertTrue(
@@ -440,7 +478,7 @@ class AnomalyDetectionCommandTests(TestCase):
 
     def test_new_vendor_anomaly(self) -> None:
         _make_txn(qb_transaction_id="QB-new", vendor="Brand New Vendor LLC", amount=Decimal("123.45"))
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
         self.assertEqual(flags.count(), 1)
         self.assertIn("new vendor", flags.first().reason.lower())
@@ -455,7 +493,7 @@ class AnomalyDetectionCommandTests(TestCase):
                 qb_transaction_id=f"QB-inc-{i}", category="Software",
                 amount=Decimal("100.00"), date=dt.date(2025, 1, 10 + i),
             )
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         flags = Flag.objects.filter(flag_type=FlagType.ANOMALY)
         self.assertGreaterEqual(flags.count(), 1)
         self.assertTrue(
@@ -467,7 +505,7 @@ class AnomalyDetectionCommandTests(TestCase):
     def test_insufficient_history_skips_zscore(self) -> None:
         _make_txn(qb_transaction_id="QB-1", vendor="Solo Vendor", amount=Decimal("100.00"))
         _make_txn(qb_transaction_id="QB-2", vendor="Solo Vendor", amount=Decimal("500.00"))
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         z_flags = [
             f for f in Flag.objects.filter(flag_type=FlagType.ANOMALY)
             if "standard deviation" in f.reason.lower()
@@ -478,10 +516,10 @@ class AnomalyDetectionCommandTests(TestCase):
         """Re-running anomaly detection must not duplicate anomaly flags."""
         _make_txn(qb_transaction_id="QB-dup-1", amount=Decimal("75.00"), date=dt.date(2025, 1, 5))
         _make_txn(qb_transaction_id="QB-dup-2", amount=Decimal("75.00"), date=dt.date(2025, 1, 7))
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         first_count = Flag.objects.filter(flag_type=FlagType.ANOMALY).count()
         self.assertGreater(first_count, 0)
 
-        call_command("run_reconciliation", "2025-01")
+        call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         second_count = Flag.objects.filter(flag_type=FlagType.ANOMALY).count()
         self.assertEqual(second_count, first_count)

@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.models import BankStatementBalance
+from core.models import BankStatementBalance, QuickBooksCompany
 
 
 class Command(BaseCommand):
@@ -51,12 +51,14 @@ class Command(BaseCommand):
         account_id = options["account_id"]
         balance = options["balance"]
         account_name = options["name"] or account_id
+        company = QuickBooksCompany.objects.for_realm(realm_id)
 
         obj, created = BankStatementBalance.objects.update_or_create(
-            realm_id=realm_id,
+            company=company,
             qb_account_id=account_id,
             month=month,
             defaults={
+                "realm_id": realm_id,
                 "account_name": account_name,
                 "ending_balance": balance,
                 "source": BankStatementBalance.Source.MANUAL,

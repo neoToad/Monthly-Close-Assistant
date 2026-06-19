@@ -20,7 +20,7 @@ from typing import Optional
 import pandas as pd
 from django.db import transaction
 
-from core.models import Flag, FlagType, Severity, Transaction
+from core.models import Flag, FlagType, QuickBooksCompany, Severity, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,17 @@ def _load_transactions_df(month: str, realm_id: Optional[str] = None) -> pd.Data
 
 
 def _vendor_zscore_anomalies(
-    df: pd.DataFrame, month: str, realm_id: Optional[str] = None
+    df: pd.DataFrame,
+    month: str,
+    realm_id: Optional[str] = None,
+    company: Optional["QuickBooksCompany"] = None,
 ) -> list[Flag]:
     """Flag current-month vendor amounts > 2σ from historical average."""
     flags: list[Flag] = []
     if df.empty:
         return flags
 
+    realm_id = realm_id or ""
     current_ids = set(df["id"])
     for vendor_lower, group in df.groupby("vendor_lower"):
         vendor_name = group["vendor"].iloc[0]
@@ -82,6 +86,8 @@ def _vendor_zscore_anomalies(
         )
         if realm_id:
             hist_qs = hist_qs.filter(realm_id=realm_id)
+        if company:
+            hist_qs = hist_qs.filter(company=company)
         hist_qs = hist_qs.values("date", "amount")
         hist = pd.DataFrame.from_records(hist_qs)
         if hist.empty or len(hist) < MIN_ZSCORE_SAMPLES:
@@ -103,7 +109,8 @@ def _vendor_zscore_anomalies(
                 if amount != mean:
                     flags.append(
                         Flag(
-                            realm_id=realm_id or "",
+                            company=company,
+                            realm_id=realm_id,
                             flag_type=FlagType.ANOMALY,
                             transaction_id=int(row["id"]),
                             reason=(
@@ -120,7 +127,8 @@ def _vendor_zscore_anomalies(
             if abs(z) > ZSCORE_THRESHOLD:
                 flags.append(
                     Flag(
-                        realm_id=realm_id or "",
+                        company=company,
+                        realm_id=realm_id,
                         flag_type=FlagType.ANOMALY,
                         transaction_id=int(row["id"]),
                         reason=(
@@ -134,12 +142,17 @@ def _vendor_zscore_anomalies(
     return flags
 
 
-def _duplicate_anomalies(df: pd.DataFrame, realm_id: Optional[str] = None) -> list[Flag]:
+def _duplicate_anomalies(
+    df: pd.DataFrame,
+    realm_id: Optional[str] = None,
+    company: Optional["QuickBooksCompany"] = None,
+) -> list[Flag]:
     """Flag duplicate-like transactions: same vendor + amount within 7 days."""
     flags: list[Flag] = []
     if df.empty or len(df) < 2:
         return flags
 
+    realm_id = realm_id or ""
     df = df.sort_values(["vendor_lower", "amount", "date"]).copy()
     flagged_ids: set[int] = set()
 
@@ -164,7 +177,8 @@ def _duplicate_anomalies(df: pd.DataFrame, realm_id: Optional[str] = None) -> li
                 flagged_ids.add(int(match["id"]))
             flags.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.ANOMALY,
                     transaction_id=tid,
                     reason=(
@@ -179,13 +193,17 @@ def _duplicate_anomalies(df: pd.DataFrame, realm_id: Optional[str] = None) -> li
 
 
 def _new_vendor_anomalies(
-    df: pd.DataFrame, month: str, realm_id: Optional[str] = None
+    df: pd.DataFrame,
+    month: str,
+    realm_id: Optional[str] = None,
+    company: Optional["QuickBooksCompany"] = None,
 ) -> list[Flag]:
     """Flag vendors appearing for the first time in the current month."""
     flags: list[Flag] = []
     if df.empty:
         return flags
 
+    realm_id = realm_id or ""
     current_ids = set(df["id"])
     for _, row in df.iterrows():
         hist_qs = Transaction.objects.filter(vendor__iexact=row["vendor"]).exclude(
@@ -193,11 +211,14 @@ def _new_vendor_anomalies(
         )
         if realm_id:
             hist_qs = hist_qs.filter(realm_id=realm_id)
+        if company:
+            hist_qs = hist_qs.filter(company=company)
         has_history = hist_qs.exists()
         if not has_history:
             flags.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.ANOMALY,
                     transaction_id=int(row["id"]),
                     reason=(
@@ -211,13 +232,17 @@ def _new_vendor_anomalies(
 
 
 def _category_mom_anomalies(
-    df: pd.DataFrame, month: str, realm_id: Optional[str] = None
+    df: pd.DataFrame,
+    month: str,
+    realm_id: Optional[str] = None,
+    company: Optional["QuickBooksCompany"] = None,
 ) -> list[Flag]:
     """Flag categories whose total spend changed > 200% month-over-month."""
     flags: list[Flag] = []
     if df.empty:
         return flags
 
+    realm_id = realm_id or ""
     year, mon = int(month[:4]), int(month[5:7])
     if mon == 1:
         prev_month = f"{year - 1}-12"
@@ -229,6 +254,8 @@ def _category_mom_anomalies(
     prev_qs = Transaction.objects.filter(date__range=(first_prev, last_prev))
     if realm_id:
         prev_qs = prev_qs.filter(realm_id=realm_id)
+    if company:
+        prev_qs = prev_qs.filter(company=company)
     prev_qs = prev_qs.values("category", "amount")
     prev_df = pd.DataFrame.from_records(prev_qs)
     if not prev_df.empty:
@@ -256,7 +283,8 @@ def _category_mom_anomalies(
             if current_total > 0:
                 flags.append(
                     Flag(
-                        realm_id=realm_id or "",
+                        company=company,
+                        realm_id=realm_id,
                         flag_type=FlagType.ANOMALY,
                         transaction_id=rep_id,
                         reason=(
@@ -272,7 +300,8 @@ def _category_mom_anomalies(
         if change_ratio > 1 + CATEGORY_MOM_THRESHOLD:
             flags.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.ANOMALY,
                     transaction_id=rep_id,
                     reason=(
@@ -286,7 +315,8 @@ def _category_mom_anomalies(
         elif change_ratio < 1 / (1 + CATEGORY_MOM_THRESHOLD):
             flags.append(
                 Flag(
-                    realm_id=realm_id or "",
+                    company=company,
+                    realm_id=realm_id,
                     flag_type=FlagType.ANOMALY,
                     transaction_id=rep_id,
                     reason=(
@@ -306,21 +336,23 @@ def run_anomaly_detection(month: str, realm_id: Optional[str] = None) -> dict:
 
     Returns a summary dict with the total number of anomaly flags created.
     """
+    realm_id = realm_id or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id) if realm_id else None
     df = _load_transactions_df(month, realm_id=realm_id)
 
     if df.empty:
         return {
             "month": month,
-            "realm_id": realm_id or "",
+            "realm_id": realm_id,
             "anomaly_flags_created": 0,
             "message": "No transactions for this month; no anomaly detection run.",
         }
 
     flags: list[Flag] = []
-    flags.extend(_vendor_zscore_anomalies(df, month, realm_id=realm_id))
-    flags.extend(_duplicate_anomalies(df, realm_id=realm_id))
-    flags.extend(_new_vendor_anomalies(df, month, realm_id=realm_id))
-    flags.extend(_category_mom_anomalies(df, month, realm_id=realm_id))
+    flags.extend(_vendor_zscore_anomalies(df, month, realm_id=realm_id, company=company))
+    flags.extend(_duplicate_anomalies(df, realm_id=realm_id, company=company))
+    flags.extend(_new_vendor_anomalies(df, month, realm_id=realm_id, company=company))
+    flags.extend(_category_mom_anomalies(df, month, realm_id=realm_id, company=company))
 
     first, last = _month_bounds(month)
     with transaction.atomic():
@@ -332,6 +364,8 @@ def run_anomaly_detection(month: str, realm_id: Optional[str] = None) -> dict:
         )
         if realm_id:
             delete_qs = delete_qs.filter(realm_id=realm_id)
+        if company:
+            delete_qs = delete_qs.filter(company=company)
         delete_qs.delete()
         Flag.objects.bulk_create(flags)
 

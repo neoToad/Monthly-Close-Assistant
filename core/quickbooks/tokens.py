@@ -76,8 +76,10 @@ def store_tokens(auth_client: Any, realm_id: Optional[str] = None, company_name:
     from core.models import QBToken, QuickBooksCompany
 
     realm_id = realm_id or getattr(auth_client, "realm_id", None) or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id, name=company_name)
     now = timezone.now()
     defaults = {
+        "company": company,
         "access_token_encrypted": encrypt_value(getattr(auth_client, "access_token", "") or ""),
         "refresh_token_encrypted": encrypt_value(getattr(auth_client, "refresh_token", "") or ""),
         "access_token_expires_at": _expiry(now, getattr(auth_client, "expires_in", None)),
@@ -89,13 +91,8 @@ def store_tokens(auth_client: Any, realm_id: Optional[str] = None, company_name:
     token, _created = QBToken.objects.update_or_create(
         realm_id=realm_id, defaults=defaults
     )
-    company_defaults: dict[str, Any] = {"is_connected": True}
-    if company_name:
-        company_defaults["name"] = company_name
-    QuickBooksCompany.objects.update_or_create(
-        realm_id=realm_id,
-        defaults=company_defaults,
-    )
+    company.is_connected = True
+    company.save(update_fields=["is_connected"])
     return token
 
 

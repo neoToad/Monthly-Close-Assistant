@@ -6,9 +6,10 @@ detection when implemented (Prompt 8).
 """
 from __future__ import annotations
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from core.anomaly.rules import run_anomaly_detection
+from core.quickbooks import tokens as qb_tokens
 from core.reconciliation.engine import run_reconciliation
 
 
@@ -26,9 +27,19 @@ class Command(BaseCommand):
             help="QuickBooks realm ID (company) to scope reconciliation to.",
         )
 
+    def _resolve_realm_id(self, realm_id: str | None) -> str:
+        if realm_id:
+            return realm_id
+        token = qb_tokens.get_active_token()
+        if token:
+            return token.realm_id
+        raise CommandError(
+            "--realm-id is required when no QuickBooks token is stored."
+        )
+
     def handle(self, *args, **options) -> None:
         month = options["month"]
-        realm_id = options.get("realm_id")
+        realm_id = self._resolve_realm_id(options.get("realm_id"))
         rec_result = run_reconciliation(month, realm_id=realm_id)
 
         if rec_result.get("message"):

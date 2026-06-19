@@ -226,6 +226,14 @@ def _default_realm_id() -> Optional[str]:
     return token.realm_id if token else None
 
 
+def _request_realm_id(request) -> Optional[str]:
+    """Return the realm id from the request, falling back to the active token."""
+    realm_id = request.POST.get("realm_id") or request.GET.get("company")
+    if realm_id:
+        return realm_id
+    return _default_realm_id()
+
+
 def _render_dashboard(
     request, month: str, realm_id: Optional[str] = None, notice: str = ""
 ):
@@ -264,7 +272,7 @@ def dashboard(request):
 def qb_sync_now(request):
     """Pull the latest QuickBooks transactions and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
-    realm_id = request.POST.get("realm_id")
+    realm_id = _request_realm_id(request)
 
     token = qb_tokens.get_active_token(realm_id=realm_id)
     if token is None:
@@ -303,15 +311,15 @@ def qb_sync_now(request):
 def reconcile_month(request):
     """Run reconciliation + anomaly detection for a month and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
-    realm_id = request.POST.get("realm_id")
+    realm_id = _request_realm_id(request)
 
     try:
         _month_bounds(month)
     except (ValueError, IndexError):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
-    rec = run_reconciliation(month, realm_id=realm_id)
-    anomaly = run_anomaly_detection(month, realm_id=realm_id)
+    rec = run_reconciliation(month, realm_id=realm_id or "")
+    anomaly = run_anomaly_detection(month, realm_id=realm_id or "")
 
     rec_flags = rec.get("flags_created", 0)
     anomaly_flags = anomaly.get("anomaly_flags_created", 0)
@@ -324,7 +332,7 @@ def reconcile_month(request):
 def draft_summary(request):
     """Draft (or re-draft) a close summary for a month and refresh the dashboard."""
     month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
-    realm_id = request.POST.get("realm_id")
+    realm_id = _request_realm_id(request)
 
     try:
         _month_bounds(month)
@@ -332,7 +340,7 @@ def draft_summary(request):
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
     try:
-        summary = draft_close_summary(month, realm_id=realm_id)
+        summary = draft_close_summary(month, realm_id=realm_id or "")
     except Exception as exc:  # noqa: BLE001
         return _render_dashboard(
             request,
@@ -391,17 +399,20 @@ def set_bank_balance(request):
     except Exception:
         return HttpResponseBadRequest("Balance must be a valid decimal number.")
 
+    company = QuickBooksCompany.objects.for_realm(realm_id or "")
     account = get_object_or_404(
         QBAccount,
+        company=company,
         realm_id=realm_id or "",
         account_id=account_id,
     )
 
     BankStatementBalance.objects.update_or_create(
-        realm_id=realm_id or "",
+        company=company,
         qb_account_id=account_id,
         month=month,
         defaults={
+            "realm_id": realm_id or "",
             "account_name": account.name,
             "ending_balance": ending_balance,
             "source": BankStatementBalance.Source.MANUAL,

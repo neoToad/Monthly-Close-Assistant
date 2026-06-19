@@ -136,7 +136,7 @@ On the host (when `DB_HOST` points at the dev Postgres):
 python manage.py test --noinput
 ```
 
-The latest full-suite result: **230 tests pass**.
+The latest full-suite result: **232 tests pass**.
 
 ## Required environment variables
 
@@ -166,7 +166,7 @@ See `.env.example` for the full list and comments.
 
 | Command | What it does |
 | --- | --- |
-| `python manage.py sync_quickbooks` | Pulls records for all connected QuickBooks realms, or use `--realm-id` to sync one. Now includes `Bill`, `BillPayment`, `VendorCredit`, and the chart of accounts (`QBAccount`). Idempotent keyed on `(realm_id, qb_transaction_id)`. Use `--skip-accounts` to skip chart sync. |
+| `python manage.py sync_quickbooks` | Pulls records for all connected QuickBooks realms, or use `--realm-id` to sync one. Now includes `Bill`, `BillPayment`, `VendorCredit`, and the chart of accounts (`QBAccount`). Idempotent keyed on `(company, qb_transaction_id)` and `(company, account_id)`. Use `--skip-accounts` to skip chart sync. |
 | `python manage.py generate_bank_feed YYYY-MM` | *(Testing only)* Generates a synthetic bank side for a month. Use `--realm-id` to scope to one realm, `--force` to overwrite, and `--cash-only` to restrict to cash-movement sources. |
 | `python manage.py run_reconciliation YYYY-MM` | Reconciles GL and bank rows for the month; use `--realm-id` to scope to one realm. Runs anomaly detection and account-level balance checks. Idempotent. |
 | `python manage.py generate_close_summary YYYY-MM` | Drafts a close summary for the month; use `--realm-id` to scope to one realm. Cross-checks against the QuickBooks GeneralLedger report when a client is available. |

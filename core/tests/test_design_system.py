@@ -13,7 +13,7 @@ from pathlib import Path
 from django.conf import settings
 from django.test import TestCase
 
-from core.models import CloseSummary
+from core.models import CloseSummary, QuickBooksCompany
 
 
 class DesignTokenTests(TestCase):
@@ -86,9 +86,13 @@ class DashboardHeaderTests(TestCase):
 
         from core.models import Flag, FlagStatus, Transaction
 
+        realm_id = "realm-design"
+        company = QuickBooksCompany.objects.for_realm(realm_id)
         counter = getattr(self, "_flag_counter", 0) + 1
         self._flag_counter = counter
         txn = Transaction.objects.create(
+            company=company,
+            realm_id=realm_id,
             date=dt.date(2025, 1, 15),
             vendor=vendor,
             amount=Decimal(amount),
@@ -96,6 +100,8 @@ class DashboardHeaderTests(TestCase):
             source_type="Purchase",
         )
         return Flag.objects.create(
+            company=company,
+            realm_id=realm_id,
             flag_type="reconciliation",
             transaction=txn,
             reason=f"{status} flag",
@@ -142,9 +148,13 @@ class LedgerRowTests(TestCase):
 
         from core.models import Flag, FlagStatus, Transaction
 
+        realm_id = "realm-design"
+        company = QuickBooksCompany.objects.for_realm(realm_id)
         counter = getattr(self, "_flag_counter", 0) + 1
         self._flag_counter = counter
         txn = Transaction.objects.create(
+            company=company,
+            realm_id=realm_id,
             date=dt.date(2025, 1, 15),
             vendor=vendor,
             amount=Decimal(amount),
@@ -152,6 +162,8 @@ class LedgerRowTests(TestCase):
             source_type="Purchase",
         )
         return Flag.objects.create(
+            company=company,
+            realm_id=realm_id,
             flag_type="reconciliation",
             transaction=txn,
             reason="Amount mismatch",
@@ -211,7 +223,11 @@ class CloseSummaryTests(TestCase):
     def _create_summary(self, status: str = "draft") -> CloseSummary:
         from core.models import CloseSummary, CloseSummaryStatus
 
+        realm_id = "realm-design"
+        company = QuickBooksCompany.objects.for_realm(realm_id)
         return CloseSummary.objects.create(
+            company=company,
+            realm_id=realm_id,
             month="2025-01",
             summary_text="This month shows a $2.00 discrepancy likely due to timing.",
             status=getattr(CloseSummaryStatus, status.upper()),

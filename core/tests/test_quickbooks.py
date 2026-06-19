@@ -21,7 +21,7 @@ from unittest import mock
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
-from core.models import QBAccount, Transaction
+from core.models import QBAccount, QuickBooksCompany, Transaction
 from core.quickbooks import client as qb_client
 from core.quickbooks.tokens import decrypt_value, encrypt_value, store_tokens
 
@@ -347,8 +347,13 @@ class SyncAccountsTests(TestCase):
 
     @mock.patch.object(qb_client.Account, "all")
     def test_updates_existing_account(self, mock_all) -> None:
+        company = QuickBooksCompany.objects.for_realm("realm-a")
         QBAccount.objects.create(
-            realm_id="realm-a", account_id="acc-1", name="Old Name", account_type="Bank"
+            company=company,
+            realm_id="realm-a",
+            account_id="acc-1",
+            name="Old Name",
+            account_type="Bank",
         )
 
         mock_all.return_value = [
@@ -524,7 +529,9 @@ class TokenExpiryBufferTests(TestCase):
     def test_not_expired_when_within_buffer(self) -> None:
         from core.models import QBToken
 
+        company = QuickBooksCompany.objects.for_realm("12345")
         token = QBToken(
+            company=company,
             realm_id="12345",
             access_token_encrypted="at",
             refresh_token_encrypted="rt",
@@ -536,7 +543,9 @@ class TokenExpiryBufferTests(TestCase):
     def test_not_expired_when_beyond_buffer(self) -> None:
         from core.models import QBToken
 
+        company = QuickBooksCompany.objects.for_realm("12345")
         token = QBToken(
+            company=company,
             realm_id="12345",
             access_token_encrypted="at",
             refresh_token_encrypted="rt",
@@ -555,7 +564,9 @@ class RetryAndRefreshTests(TestCase):
     def setUp(self) -> None:
         from core.models import QBToken
 
+        company = QuickBooksCompany.objects.for_realm("12345")
         self.qb_token = QBToken.objects.create(
+            company=company,
             realm_id="12345",
             access_token_encrypted="old-access",
             refresh_token_encrypted="old-refresh",
@@ -573,7 +584,9 @@ class RetryAndRefreshTests(TestCase):
         """If the stored token is already expired, refresh before the first call."""
         from core.models import QBToken
 
+        company = QuickBooksCompany.objects.for_realm("12345")
         expired_token = QBToken(
+            company=company,
             realm_id="12345",
             access_token_encrypted="old-access",
             refresh_token_encrypted="old-refresh",

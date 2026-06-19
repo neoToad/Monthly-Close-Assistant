@@ -31,6 +31,12 @@ class QBAccount(models.Model):
     GL account strings, map account types, and drive account-level checks.
     """
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="accounts",
+        help_text="QuickBooks company this account belongs to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         db_index=True,
@@ -58,7 +64,7 @@ class QBAccount(models.Model):
 
     class Meta:
         ordering = ["name"]
-        unique_together = [["realm_id", "account_id"]]
+        unique_together = [["company", "account_id"]]
         verbose_name = "QuickBooks account"
         verbose_name_plural = "QuickBooks accounts"
 
@@ -84,6 +90,12 @@ class BankStatementBalance(models.Model):
         CSV_UPLOAD = "csv_upload", "CSV upload"
         BANK_FEED = "bank_feed", "Bank feed"
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="bank_statement_balances",
+        help_text="QuickBooks company this balance belongs to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         db_index=True,
@@ -124,7 +136,7 @@ class BankStatementBalance(models.Model):
 
     class Meta:
         ordering = ["-month", "account_name"]
-        unique_together = [["realm_id", "qb_account_id", "month"]]
+        unique_together = [["company", "qb_account_id", "month"]]
         verbose_name = "bank statement balance"
         verbose_name_plural = "bank statement balances"
 
@@ -137,9 +149,15 @@ class Transaction(models.Model):
 
     Pulled from Purchase, Deposit, and JournalEntry records during sync.
     ``qb_transaction_id`` is unique only within a QuickBooks realm, so idempotency
-    is keyed on ``(realm_id, qb_transaction_id)``.
+    is keyed on ``(company, qb_transaction_id)``.
     """
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="transactions",
+        help_text="QuickBooks company this transaction belongs to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         db_index=True,
@@ -159,7 +177,7 @@ class Transaction(models.Model):
     qb_transaction_id = models.CharField(
         max_length=100,
         db_index=True,
-        help_text="QuickBooks transaction id; natural key for idempotent sync (scoped by realm_id).",
+        help_text="QuickBooks transaction id; natural key for idempotent sync (scoped by company).",
     )
     source_type = models.CharField(
         max_length=20, choices=SourceType.choices, help_text="QuickBooks record type."
@@ -167,7 +185,7 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ["-date", "vendor"]
-        unique_together = [["realm_id", "qb_transaction_id"]]
+        unique_together = [["company", "qb_transaction_id"]]
 
     def __str__(self) -> str:
         return f"{self.date} {self.vendor} {self.amount} ({self.source_type})"
@@ -181,6 +199,12 @@ class BankTransaction(models.Model):
     entry may have no GL match).
     """
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="bank_transactions",
+        help_text="QuickBooks company this bank row belongs to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         db_index=True,
@@ -249,6 +273,12 @@ class Flag(models.Model):
     ``realm_id`` is denormalized from the linked transaction/bank row for fast filtering.
     """
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="flags",
+        help_text="QuickBooks company this flag belongs to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         db_index=True,
@@ -323,9 +353,15 @@ class CloseSummary(models.Model):
     """An agent-generated monthly close draft awaiting human review.
 
     The agent only ever produces draft text; a human marks it reviewed (with notes).
-    One summary per company per month (``(realm_id, month)`` is unique).
+    One summary per company per month (``(company, month)`` is unique).
     """
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="close_summaries",
+        help_text="QuickBooks company this summary belongs to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         db_index=True,
@@ -348,14 +384,14 @@ class CloseSummary(models.Model):
     class Meta:
         ordering = ["-month"]
         verbose_name_plural = "close summaries"
-        unique_together = [["realm_id", "month"]]
+        unique_together = [["company", "month"]]
 
     def __str__(self) -> str:
         return f"Close summary {self.month} ({self.status})"
 
 
 class QBToken(models.Model):
-    """Encrypted QuickBooks OAuth tokens, one row per realm (company).
+    """Encrypted QuickBooks OAuth tokens, one row per company.
 
     Added in Prompt 3 so the OAuth callback and the ``sync_quickbooks`` command can
     persist access/refresh tokens at rest and reload them later. The token values
@@ -363,6 +399,12 @@ class QBToken(models.Model):
     plaintext accessors only through ``get_access_token`` / ``get_refresh_token``.
     """
 
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="token",
+        help_text="QuickBooks company these tokens belong to.",
+    )
     realm_id = models.CharField(
         max_length=50,
         unique=True,
@@ -417,12 +459,33 @@ class QBToken(models.Model):
 
 
 
+class QuickBooksCompanyManager(models.Manager):
+    """Manager helpers for ``QuickBooksCompany``.
+
+    ``for_realm`` returns the company row for a realm id, creating it on demand with
+    an optional display name. This is the single place where realm-scoped code links
+    rows to a canonical ``QuickBooksCompany`` record.
+    """
+
+    def for_realm(self, realm_id: str, name: str = "") -> "QuickBooksCompany":
+        company, _ = self.get_or_create(
+            realm_id=realm_id,
+            defaults={"name": name or "", "is_connected": True},
+        )
+        if name and not company.name:
+            company.name = name
+            company.save(update_fields=["name"])
+        return company
+
+
 class QuickBooksCompany(models.Model):
     """Lightweight metadata about a connected QuickBooks realm.
 
     Created automatically when tokens are stored. The ``name`` is optional and can
     be edited later; the UI falls back to ``realm_id`` when ``name`` is blank.
     """
+
+    objects = QuickBooksCompanyManager()
 
     realm_id = models.CharField(
         max_length=50,

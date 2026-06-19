@@ -27,7 +27,10 @@ from core.models import (
 
 def make_transaction(**overrides) -> Transaction:
     """Helper: create a Transaction with sensible defaults, overridden by kwargs."""
+    realm_id = overrides.get("realm_id", "realm-a")
+    company = QuickBooksCompany.objects.for_realm(realm_id)
     defaults = dict(
+        company=company,
         date=date(2025, 1, 15),
         vendor="Acme Corp",
         amount=Decimal("420.00"),
@@ -35,9 +38,10 @@ def make_transaction(**overrides) -> Transaction:
         gl_account="5000 - Supplies",
         qb_transaction_id="QB-123",
         source_type=SourceType.PURCHASE,
-        realm_id="realm-a",
+        realm_id=realm_id,
     )
     defaults.update(overrides)
+    defaults["company"] = company
     return Transaction.objects.create(**defaults)
 
 
@@ -72,9 +76,11 @@ class QuickBooksCompanyModelTests(TestCase):
 
 class RealmIdFieldTests(TestCase):
     def test_transaction_requires_realm_id(self) -> None:
+        company = QuickBooksCompany.objects.for_realm("missing-realm")
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Transaction.objects.create(
+                    company=company,
                     date=date(2025, 1, 15),
                     vendor="Acme Corp",
                     amount=Decimal("100.00"),
@@ -84,9 +90,11 @@ class RealmIdFieldTests(TestCase):
                 )
 
     def test_bank_transaction_requires_realm_id(self) -> None:
+        company = QuickBooksCompany.objects.for_realm("missing-realm")
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 BankTransaction.objects.create(
+                    company=company,
                     date=date(2025, 1, 15),
                     vendor="Acme Corp",
                     amount=Decimal("100.00"),
@@ -94,18 +102,21 @@ class RealmIdFieldTests(TestCase):
                 )
 
     def test_flag_requires_realm_id(self) -> None:
+        company = QuickBooksCompany.objects.for_realm("missing-realm")
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Flag.objects.create(
+                    company=company,
                     flag_type=FlagType.RECONCILIATION,
                     reason="missing realm",
                     realm_id=None,
                 )
 
     def test_close_summary_requires_realm_id(self) -> None:
+        company = QuickBooksCompany.objects.for_realm("missing-realm")
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                CloseSummary.objects.create(month="2025-01", realm_id=None)
+                CloseSummary.objects.create(company=company, month="2025-01", realm_id=None)
 
 
 class RealmUniqueConstraintTests(TestCase):
@@ -121,15 +132,18 @@ class RealmUniqueConstraintTests(TestCase):
                 make_transaction(qb_transaction_id="DUP-1", realm_id="realm-a")
 
     def test_close_summary_unique_per_realm(self) -> None:
-        CloseSummary.objects.create(month="2025-01", realm_id="realm-a")
-        CloseSummary.objects.create(month="2025-01", realm_id="realm-b")
+        company_a = QuickBooksCompany.objects.for_realm("realm-a")
+        company_b = QuickBooksCompany.objects.for_realm("realm-b")
+        CloseSummary.objects.create(company=company_a, month="2025-01", realm_id="realm-a")
+        CloseSummary.objects.create(company=company_b, month="2025-01", realm_id="realm-b")
         self.assertEqual(CloseSummary.objects.count(), 2)
 
     def test_close_summary_duplicate_within_realm_raises(self) -> None:
-        CloseSummary.objects.create(month="2025-01", realm_id="realm-a")
+        company_a = QuickBooksCompany.objects.for_realm("realm-a")
+        CloseSummary.objects.create(company=company_a, month="2025-01", realm_id="realm-a")
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                CloseSummary.objects.create(month="2025-01", realm_id="realm-a")
+                CloseSummary.objects.create(company=company_a, month="2025-01", realm_id="realm-a")
 
 
 class RealmBackfillMigrationTests(TestCase):
@@ -138,7 +152,9 @@ class RealmBackfillMigrationTests(TestCase):
         # This test verifies the data migration behavior by creating a Transaction
         # with an explicit realm_id. The actual backfill of legacy NULL rows was
         # performed by migration 0003_multi_company.
+        company = QuickBooksCompany.objects.for_realm("backfill-realm")
         QBToken.objects.create(
+            company=company,
             realm_id="backfill-realm",
             access_token_encrypted="at",
             refresh_token_encrypted="rt",

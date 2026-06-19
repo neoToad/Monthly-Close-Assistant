@@ -15,8 +15,13 @@ from unittest import mock
 from django.core.management import call_command
 from django.test import Client, TestCase
 
+from core.models import QuickBooksCompany
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
+
+
+def _company(realm_id: str = "realm-a") -> QuickBooksCompany:
+    return QuickBooksCompany.objects.for_realm(realm_id)
 
 
 class OAuthStartViewTests(TestCase):
@@ -296,11 +301,16 @@ class BankBalancesDashboardTests(TestCase):
     def test_dashboard_shows_bank_balances_panel(self) -> None:
         from core.models import BankStatementBalance, QBAccount, Transaction
 
+        company = _company("realm-a")
         QBAccount.objects.create(
-            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            company=company,
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Operating Checking",
             account_type="Bank",
         )
         BankStatementBalance.objects.create(
+            company=company,
             realm_id="realm-a",
             qb_account_id="qb-acc-1",
             account_name="Operating Checking",
@@ -309,6 +319,7 @@ class BankBalancesDashboardTests(TestCase):
             source=BankStatementBalance.Source.MANUAL,
         )
         Transaction.objects.create(
+            company=company,
             date=dt.date(2026, 6, 15),
             vendor="Acme",
             amount=Decimal("568.38"),
@@ -328,11 +339,16 @@ class BankBalancesDashboardTests(TestCase):
     def test_dashboard_flags_balance_gap(self) -> None:
         from core.models import BankStatementBalance, QBAccount, Transaction
 
+        company = _company("realm-a")
         QBAccount.objects.create(
-            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            company=company,
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Operating Checking",
             account_type="Bank",
         )
         BankStatementBalance.objects.create(
+            company=company,
             realm_id="realm-a",
             qb_account_id="qb-acc-1",
             account_name="Operating Checking",
@@ -341,6 +357,7 @@ class BankBalancesDashboardTests(TestCase):
             source=BankStatementBalance.Source.MANUAL,
         )
         Transaction.objects.create(
+            company=company,
             date=dt.date(2026, 6, 15),
             vendor="Acme",
             amount=Decimal("568.38"),
@@ -358,8 +375,12 @@ class BankBalancesDashboardTests(TestCase):
     def test_set_bank_balance_view_creates_row(self) -> None:
         from core.models import QBAccount
 
+        company = _company("realm-a")
         QBAccount.objects.create(
-            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            company=company,
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Operating Checking",
             account_type="Bank",
         )
         resp = self.client.post(
@@ -428,7 +449,9 @@ class DashboardActionViewTests(TestCase):
     def test_reconcile_month_creates_flags(self) -> None:
         from core.models import BankTransaction, Transaction
 
+        company = _company("realm-a")
         txn = Transaction.objects.create(
+            company=company,
             date=dt.date(2025, 1, 15),
             vendor="Acme Corp",
             amount=Decimal("100.00"),
@@ -437,6 +460,7 @@ class DashboardActionViewTests(TestCase):
             realm_id="realm-a",
         )
         BankTransaction.objects.create(
+            company=company,
             date=txn.date,
             vendor=txn.vendor,
             amount=Decimal("102.50"),
@@ -444,7 +468,9 @@ class DashboardActionViewTests(TestCase):
             realm_id=txn.realm_id,
         )
 
-        resp = self.client.post("/dashboard/reconcile/", {"month": "2025-01"})
+        resp = self.client.post(
+            "/dashboard/reconcile/", {"month": "2025-01", "realm_id": "realm-a"}
+        )
 
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Reconciliation complete")
@@ -455,7 +481,9 @@ class DashboardActionViewTests(TestCase):
     def test_draft_summary_creates_summary(self) -> None:
         from core.models import CloseSummary
 
-        resp = self.client.post("/dashboard/summary/draft/", {"month": "2025-01"})
+        resp = self.client.post(
+            "/dashboard/summary/draft/", {"month": "2025-01", "realm_id": "realm-a"}
+        )
 
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Close summary drafted")

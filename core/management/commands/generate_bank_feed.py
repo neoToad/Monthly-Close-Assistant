@@ -9,6 +9,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from core.bank_feed import generate_bank_feed
+from core.quickbooks import tokens as qb_tokens
 
 
 class Command(BaseCommand):
@@ -74,13 +75,24 @@ class Command(BaseCommand):
             ),
         )
 
+    def _resolve_realm_id(self, realm_id: str | None) -> str:
+        if realm_id:
+            return realm_id
+        token = qb_tokens.get_active_token()
+        if token:
+            return token.realm_id
+        raise CommandError(
+            "--realm-id is required when no QuickBooks token is stored."
+        )
+
     def handle(self, *args, **options) -> None:
         month = options["month"]
+        realm_id = self._resolve_realm_id(options.get("realm_id"))
 
         try:
             result = generate_bank_feed(
                 month=month,
-                realm_id=options.get("realm_id"),
+                realm_id=realm_id,
                 drop_rate=options["drop_rate"],
                 dup_rate=options["dup_rate"],
                 amount_shift_rate=options["amount_shift_rate"],

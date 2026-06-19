@@ -15,7 +15,7 @@ from typing import Optional
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.models import BankStatementBalance, QBAccount
+from core.models import BankStatementBalance, QBAccount, QuickBooksCompany
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
 
@@ -73,6 +73,7 @@ class Command(BaseCommand):
 
     def _seed_realm(self, token, month: str, *, force: bool) -> tuple[int, int]:
         realm_id = token.realm_id
+        company = QuickBooksCompany.objects.for_realm(realm_id)
         qb = qb_client.build_quickbooks_client(token)
 
         balances = qb_client.fetch_account_current_balances(qb, qb_token=token)
@@ -86,6 +87,7 @@ class Command(BaseCommand):
 
         cash_account_ids = set(
             QBAccount.objects.filter(
+                company=company,
                 realm_id=realm_id,
                 account_type__in=CASH_LIKE_ACCOUNT_TYPES,
             ).values_list("account_id", flat=True)
@@ -97,10 +99,11 @@ class Command(BaseCommand):
                 continue
 
             obj, was_created = BankStatementBalance.objects.update_or_create(
-                realm_id=realm_id,
+                company=company,
                 qb_account_id=account_id,
                 month=month,
                 defaults={
+                    "realm_id": realm_id,
                     "account_name": info["name"],
                     "ending_balance": Decimal(str(info["balance"])),
                     "source": BankStatementBalance.Source.QB_API,
