@@ -3,6 +3,15 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(models): add QBAccount model and extend SourceType choices
+
+- Added `Bill`, `BillPayment`, and `VendorCredit` to `core.models.SourceType`.
+- Added `QBAccount` model keyed on `(realm_id, account_id)` with `name`,
+  `account_type`, `account_sub_type`, and `active` fields.
+- Generated migration `core/migrations/0004_qbaccount.py` and registered
+  `QBAccount` in the Django admin.
+- Added model tests for new `SourceType` choices and `QBAccount` constraints.
+
 ## feat(qb): fetch and store QuickBooks company names
 
 - Added `CompanyInfo` fetch helper (`fetch_company_name`) in `core/quickbooks/client.py`

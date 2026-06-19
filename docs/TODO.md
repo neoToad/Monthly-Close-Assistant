@@ -24,6 +24,19 @@
 - [x] Write TDD tests for name fetch, callback, sync command, and model cleanup.
 - [x] Update docs (`PLAN.md`, `CHANGELOG.md`, `README.md`, `CURRENT_TASK.md`).
 
+## Add QuickBooks data sources
+
+- [ ] Add `Bill`, `BillPayment`, `VendorCredit` to `SourceType` and `QBAccount` model
+- [ ] Extend `SYNC_OBJECTS` and `normalize_record` for the three AP types
+- [ ] Add `sync_accounts` helper and wire into `sync_quickbooks`
+- [ ] Print per-type counts for new transaction sources
+- [ ] Add normalization, account sync, and sync-command tests
+- [ ] Add realm-isolation tests for `QBAccount`
+- [ ] Scope bank feed to cash-like transaction types with `--cash-only`
+- [ ] Add `fetch_general_ledger_summary` and include in close-summary inputs
+- [ ] Update README and project docs
+- [ ] Run full test suite and commit each step
+
 ## Design System (D1–D7)
 
 - [x] D1 — Design Tokens & Base Styles

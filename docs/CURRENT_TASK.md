@@ -2,11 +2,14 @@
 
 ## Stage
 
-QuickBooks company-name fetch is implemented and all tests pass.
+Implementing `docs/plans/add_quickbooks_data_sources_plan.md`.
 
-## Current task
+## Current step
 
-Finalizing documentation (`CHANGELOG.md`) and committing the feature.
+**Step 1 — Extend the schema**
+- Add `Bill`, `BillPayment`, `VendorCredit` to `core.models.SourceType`.
+- Add `QBAccount` chart-of-accounts model and migration `0004_qbaccount.py`.
+- Write failing model tests first, then make them pass.
 
 ## Branch
 
@@ -14,4 +17,4 @@ Finalizing documentation (`CHANGELOG.md`) and committing the feature.
 
 ## Next step
 
-Commit with a conventional commit message and append the changelog entry.
+Commit `feat(models): add QBAccount model and extend SourceType choices`, then begin Step 2.

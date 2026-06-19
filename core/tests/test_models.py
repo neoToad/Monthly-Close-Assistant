@@ -20,6 +20,7 @@ from core.models import (
     Flag,
     FlagStatus,
     FlagType,
+    QBAccount,
     QBToken,
     QuickBooksCompany,
     Severity,
@@ -68,12 +69,54 @@ class TransactionTests(TestCase):
                 make_transaction(qb_transaction_id="DUP-1")
 
     def test_source_type_choices(self) -> None:
-        # The three QuickBooks record types the sync pulls must be valid choices.
-        valid = {SourceType.PURCHASE, SourceType.DEPOSIT, SourceType.JOURNAL_ENTRY}
+        # The QuickBooks record types the sync pulls must be valid choices.
+        valid = {
+            SourceType.PURCHASE,
+            SourceType.DEPOSIT,
+            SourceType.JOURNAL_ENTRY,
+            SourceType.BILL,
+            SourceType.BILL_PAYMENT,
+            SourceType.VENDOR_CREDIT,
+        }
         self.assertEqual(
             {choice[0] for choice in SourceType.choices},
             {c.value for c in valid},
         )
+
+
+class QBAccountTests(TestCase):
+    def test_create_and_fields(self) -> None:
+        account = QBAccount.objects.create(
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Checking",
+            account_type="Bank",
+            account_sub_type="Checking",
+            active=True,
+        )
+        self.assertEqual(account.realm_id, "realm-a")
+        self.assertEqual(account.account_id, "qb-acc-1")
+        self.assertEqual(account.name, "Checking")
+        self.assertEqual(account.account_type, "Bank")
+        self.assertEqual(account.account_sub_type, "Checking")
+        self.assertTrue(account.active)
+
+    def test_unique_together_per_realm(self) -> None:
+        QBAccount.objects.create(realm_id="realm-a", account_id="dup", name="A")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                QBAccount.objects.create(realm_id="realm-a", account_id="dup", name="B")
+
+    def test_same_account_id_allowed_in_different_realms(self) -> None:
+        QBAccount.objects.create(realm_id="realm-a", account_id="shared", name="A")
+        QBAccount.objects.create(realm_id="realm-b", account_id="shared", name="B")
+        self.assertEqual(QBAccount.objects.count(), 2)
+
+    def test_str_representation(self) -> None:
+        account = QBAccount.objects.create(
+            realm_id="realm-a", account_id="qb-acc-1", name="Checking"
+        )
+        self.assertIn("Checking", str(account))
 
 
 class BankTransactionTests(TestCase):
@@ -197,7 +240,7 @@ class CloseSummaryTests(TestCase):
 
 class AdminRegistrationTests(TestCase):
     def test_all_models_registered_in_admin(self) -> None:
-        for model in (Transaction, BankTransaction, Flag, CloseSummary, QBToken, QuickBooksCompany):
+        for model in (Transaction, BankTransaction, Flag, CloseSummary, QBAccount, QBToken, QuickBooksCompany):
             self.assertIn(
                 model,
                 admin.site._registry,

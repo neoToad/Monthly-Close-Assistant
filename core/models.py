@@ -19,6 +19,51 @@ class SourceType(models.TextChoices):
     PURCHASE = "Purchase", "Purchase"
     DEPOSIT = "Deposit", "Deposit"
     JOURNAL_ENTRY = "JournalEntry", "Journal Entry"
+    BILL = "Bill", "Bill"
+    BILL_PAYMENT = "BillPayment", "Bill Payment"
+    VENDOR_CREDIT = "VendorCredit", "Vendor Credit"
+
+
+class QBAccount(models.Model):
+    """QuickBooks chart-of-accounts row for a connected realm.
+
+    Stored as master data (not a transaction) so the close workflow can validate
+    GL account strings, map account types, and drive account-level checks.
+    """
+
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this account belongs to.",
+    )
+    account_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks account id (natural key scoped by realm).",
+    )
+    name = models.CharField(max_length=200, help_text="Account name as shown in QBO.")
+    account_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="QuickBooks account type (e.g. Bank, Expense, Liability).",
+    )
+    account_sub_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="QuickBooks account sub-type.",
+    )
+    active = models.BooleanField(default=True, help_text="Whether QBO marks the account active.")
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = [["realm_id", "account_id"]]
+        verbose_name = "QuickBooks account"
+        verbose_name_plural = "QuickBooks accounts"
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.account_type or 'Unknown'})"
 
 
 class Transaction(models.Model):
