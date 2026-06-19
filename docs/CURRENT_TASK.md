@@ -6,7 +6,7 @@ Implementing `docs/plans/ai_assisted_account_reconciliation_plan.md`.
 
 ## Current task
 
-Step 1: add `AccountReconciliationState` model, `Flag.notes`, migration, admin registration, and model tests.
+Step 2: build the account-level reconciliation suggestion engine in `core/agent/reconcile.py` (TDD: tests first).
 
 ## Branch
 
@@ -14,5 +14,4 @@ Step 1: add `AccountReconciliationState` model, `Flag.notes`, migration, admin r
 
 ## Latest commit
 
-`f10bae2` — fix(ui): show bank balances panel when no cash accounts exist
-(233 tests passing).
+`0cd8be4` — feat(models): add AccountReconciliationState and Flag.notes for reconciliation workflow.
