@@ -1,9 +1,12 @@
 {% load flag_extras %}
-<div class="ledger-row" id="flag-row-{{ flag.id }}">
+<div class="ledger-row {{ flag.flag_type|flag_type_class }}" id="flag-row-{{ flag.id }}">
     <div class="ledger-row-main">
         <div class="ledger-row-primary">
             <span class="dot {{ flag.status|status_dot_class }}" aria-hidden="true"></span>
             <span class="vendor">{{ flag.display_vendor }}</span>
+            {% if flag.flag_type|flag_type_label %}
+                <span class="flag-type-badge {{ flag.flag_type|flag_type_class }}">{{ flag.flag_type|flag_type_label }}</span>
+            {% endif %}
         </div>
         <div class="reason">{{ flag.reason }}</div>
     </div>

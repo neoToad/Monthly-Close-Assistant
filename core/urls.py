@@ -21,6 +21,7 @@ urlpatterns = [
     path("dashboard/sync/", views.qb_sync_now, name="qb_sync_now"),
     path("dashboard/reconcile/", views.reconcile_month, name="reconcile_month"),
     path("dashboard/summary/draft/", views.draft_summary, name="draft_summary"),
+    path("dashboard/balance/set/", views.set_bank_balance, name="set_bank_balance"),
     path("dashboard/flag/<int:flag_id>/approve/", views.flag_approve, name="flag_approve"),
     path("dashboard/flag/<int:flag_id>/reject/", views.flag_reject, name="flag_reject"),
     path("dashboard/summary/<str:month>/review/", views.summary_review, name="summary_review"),

@@ -74,6 +74,10 @@
         </form>
     </div>
 
+    {% if has_bank_balances %}
+        {% include "core/bank_balances_section.html" %}
+    {% endif %}
+
     <div class="status-strip" aria-label="Flag counts for {{ month }}">
         <span><span class="dot flag" aria-hidden="true"></span>{{ flag_counts.open }} open</span>
         <span><span class="dot confirmed" aria-hidden="true"></span>{{ flag_counts.approved }} approved</span>

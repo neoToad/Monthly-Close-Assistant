@@ -1,16 +1,16 @@
 """Views for the QuickBooks OAuth flow (Prompt 3) and the review dashboard (Prompt 13).
 
 OAuth endpoints:
-* ``qb_oauth_start`` — redirects the user to Intuit's authorize URL.
-* ``qb_oauth_callback`` — receives the code, verifies state, stores tokens.
+* ``qb_oauth_start`` â€” redirects the user to Intuit's authorize URL.
+* ``qb_oauth_callback`` â€” receives the code, verifies state, stores tokens.
 
 Dashboard endpoints:
-* ``dashboard`` — month selector, open flags table, close summary section.
-* ``qb_sync_now`` — pull the latest QuickBooks transactions.
-* ``reconcile_month`` — run reconciliation + anomaly detection for a month.
-* ``draft_summary`` — draft a close summary for a month.
-* ``flag_approve`` / ``flag_reject`` — update a flag status (HTMX row swap).
-* ``summary_review`` — mark a close summary reviewed with notes.
+* ``dashboard`` â€” month selector, open flags table, close summary section.
+* ``qb_sync_now`` â€” pull the latest QuickBooks transactions.
+* ``reconcile_month`` â€” run reconciliation + anomaly detection for a month.
+* ``draft_summary`` â€” draft a close summary for a month.
+* ``flag_approve`` / ``flag_reject`` â€” update a flag status (HTMX row swap).
+* ``summary_review`` â€” mark a close summary reviewed with notes.
 """
 from __future__ import annotations
 
@@ -18,8 +18,12 @@ import calendar
 import datetime as dt
 import logging
 
+from decimal import Decimal
+from typing import Any, Optional
+
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db import models
+from django.db.models import Q, Sum
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -28,18 +32,23 @@ from django.views.decorators.http import require_http_methods, require_POST
 from core.agent.summary import draft_close_summary
 from core.anomaly.rules import run_anomaly_detection
 from core.models import (
+    BankStatementBalance,
     CloseSummary,
     CloseSummaryStatus,
     Flag,
     FlagStatus,
+    QBAccount,
     QuickBooksCompany,
     Transaction,
 )
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.reconciliation.engine import run_reconciliation
+from core.reconciliation.engine import BALANCE_TOLERANCE, run_reconciliation
 
 logger = logging.getLogger(__name__)
+
+#: QuickBooks account types treated as cash or cash-like for bank reconciliation.
+CASH_LIKE_ACCOUNT_TYPES = {"Bank", "Other Current Asset"}
 
 
 @require_http_methods(["GET"])
@@ -78,7 +87,7 @@ def qb_oauth_callback(request):
         auth_client = qb_client.make_auth_client(realm_id=realm_id)
         exchanged = qb_client.exchange_code_for_tokens(auth_client, code, realm_id)
         token = qb_tokens.store_tokens(exchanged, realm_id=realm_id)
-    except Exception:  # noqa: BLE001 — surface any exchange/storage failure to the user
+    except Exception:  # noqa: BLE001 â€” surface any exchange/storage failure to the user
         return HttpResponseBadRequest("QuickBooks token exchange failed.")
 
     # Best-effort fetch of the company display name; never block the OAuth redirect.
@@ -116,6 +125,54 @@ def _available_months(realm_id: Optional[str] = None) -> list[str]:
     return [f"{d.year}-{d.month:02d}" for d in dates]
 
 
+def _bank_balances_context(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
+    """Build the bank balances panel context for ``month`` and optional ``realm_id``.
+
+    Returns a dict with:
+    - ``balances``: a list of account snapshots (name, bank_balance, posted_total,
+      difference, is_reconciled).
+    - ``cash_accounts``: cash-like QBAccount rows for the realm/month, used to
+      populate the "set balance" form.
+    """
+    first, last = _month_bounds(month)
+
+    balances_qs = BankStatementBalance.objects.filter(month=month)
+    if realm_id:
+        balances_qs = balances_qs.filter(realm_id=realm_id)
+
+    snapshots: list[dict[str, Any]] = []
+    for balance in balances_qs:
+        posted_total = Transaction.objects.filter(
+            realm_id=balance.realm_id,
+            gl_account=balance.account_name,
+            date__range=(first, last),
+        ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0")
+        difference = balance.ending_balance - posted_total
+        snapshots.append(
+            {
+                "account_name": balance.account_name,
+                "bank_balance": balance.ending_balance,
+                "posted_total": posted_total,
+                "difference": difference,
+                "is_reconciled": abs(difference) <= BALANCE_TOLERANCE,
+                "source": balance.source,
+            }
+        )
+
+    cash_accounts = QBAccount.objects.filter(
+        account_type__in=CASH_LIKE_ACCOUNT_TYPES,
+        active=True,
+    )
+    if realm_id:
+        cash_accounts = cash_accounts.filter(realm_id=realm_id)
+
+    return {
+        "balances": snapshots,
+        "cash_accounts": cash_accounts,
+        "has_bank_balances": bool(snapshots) or cash_accounts.exists(),
+    }
+
+
 def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict:
     """Build the dashboard context for ``month`` and optional ``realm_id``."""
     first, last = _month_bounds(month)
@@ -150,7 +207,7 @@ def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict:
         txn_qs = txn_qs.filter(realm_id=realm_id)
     has_data = txn_qs.exists()
 
-    return {
+    context = {
         "month": month,
         "months": months,
         "realm_id": realm_id,
@@ -159,6 +216,8 @@ def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict:
         "summary": summary,
         "has_data": has_data,
     }
+    context.update(_bank_balances_context(month, realm_id=realm_id))
+    return context
 
 
 def _default_realm_id() -> Optional[str]:
@@ -304,6 +363,54 @@ def flag_reject(request, flag_id: int):
     flag.status = FlagStatus.REJECTED
     flag.save(update_fields=["status"])
     return render(request, "core/flag_row.html", {"flag": flag})
+
+
+@login_required
+@require_POST
+def set_bank_balance(request):
+    """Create or update a ``BankStatementBalance`` row from the dashboard.
+
+    Expects ``month``, ``realm_id``, ``qb_account_id``, and ``ending_balance`` in POST
+    data. Returns the bank balances section partial so HTMX can swap it in place.
+    """
+    month = request.POST.get("month")
+    realm_id = request.POST.get("realm_id")
+    account_id = request.POST.get("qb_account_id")
+    balance_str = request.POST.get("ending_balance", "").strip()
+
+    if not month or not account_id or not balance_str:
+        return HttpResponseBadRequest("Month, account, and balance are required.")
+
+    try:
+        _month_bounds(month)
+    except (ValueError, IndexError):
+        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
+
+    try:
+        ending_balance = Decimal(balance_str)
+    except Exception:
+        return HttpResponseBadRequest("Balance must be a valid decimal number.")
+
+    account = get_object_or_404(
+        QBAccount,
+        realm_id=realm_id or "",
+        account_id=account_id,
+    )
+
+    BankStatementBalance.objects.update_or_create(
+        realm_id=realm_id or "",
+        qb_account_id=account_id,
+        month=month,
+        defaults={
+            "account_name": account.name,
+            "ending_balance": ending_balance,
+            "source": BankStatementBalance.Source.MANUAL,
+        },
+    )
+
+    context = _bank_balances_context(month, realm_id=realm_id)
+    context["month"] = month
+    return render(request, "core/bank_balances_section.html", context)
 
 
 @login_required

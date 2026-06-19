@@ -1,0 +1,57 @@
+<div id="bank-balances-section" class="bank-balances-section">
+    <h3>Bank Balances</h3>
+
+    {% if balances %}
+        <div class="ledger-list">
+            {% for item in balances %}
+                <div class="ledger-row bank-balance-row {% if item.is_reconciled %}reconciled{% else %}unreconciled{% endif %}">
+                    <div class="ledger-row-main">
+                        <div class="ledger-row-primary">
+                            <span class="dot {{ item.is_reconciled|yesno:"confirmed,flag" }}" aria-hidden="true"></span>
+                            <span class="vendor">{{ item.account_name }}</span>
+                        </div>
+                        <div class="reason">
+                            Bank ending balance: ${{ item.bank_balance|floatformat:2 }} ·
+                            Posted GL total: ${{ item.posted_total|floatformat:2 }}
+                            {% if not item.is_reconciled %}
+                                <span class="balance-gap">· Difference: ${{ item.difference|floatformat:2 }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="ledger-row-meta">
+                        <span class="status-label {{ item.is_reconciled|yesno:"confirmed,flag" }}">
+                            {{ item.is_reconciled|yesno:"Reconciled,Unreconciled" }}
+                        </span>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="empty-state">No bank balances entered for {{ month }}.</p>
+    {% endif %}
+
+    {% if cash_accounts %}
+        <form class="inline-form"
+              hx-post="{% url 'core:set_bank_balance' %}"
+              hx-target="#bank-balances-section"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+
+            <label for="balance-account" class="visually-hidden">Account</label>
+            <select id="balance-account" name="qb_account_id" required>
+                <option value="" selected disabled>Select account…</option>
+                {% for account in cash_accounts %}
+                    <option value="{{ account.account_id }}">{{ account.name }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="balance-amount" class="visually-hidden">Ending balance</label>
+            <input id="balance-amount" type="number" name="ending_balance" step="0.01" required
+                   placeholder="Ending balance">
+
+            <button type="submit" class="btn">Set Bank Balance</button>
+        </form>
+    {% endif %}
+</div>

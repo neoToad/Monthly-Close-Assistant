@@ -284,6 +284,102 @@ def SimpleNamespace_bill() -> object:
 # ---------------------------------------------------------------------------
 
 
+class BankBalancesDashboardTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reviewer", password="test")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_dashboard_shows_bank_balances_panel(self) -> None:
+        from core.models import BankStatementBalance, QBAccount, Transaction
+
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            account_type="Bank",
+        )
+        BankStatementBalance.objects.create(
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("-3621.93"),
+            source=BankStatementBalance.Source.MANUAL,
+        )
+        Transaction.objects.create(
+            date=dt.date(2026, 6, 15),
+            vendor="Acme",
+            amount=Decimal("568.38"),
+            gl_account="Operating Checking",
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+            realm_id="realm-a",
+        )
+
+        resp = self.client.get("/dashboard/?company=realm-a&month=2026-06")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bank Balances")
+        self.assertContains(resp, "Operating Checking")
+        self.assertContains(resp, "-3621.93")
+        self.assertContains(resp, "568.38")
+
+    def test_dashboard_flags_balance_gap(self) -> None:
+        from core.models import BankStatementBalance, QBAccount, Transaction
+
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            account_type="Bank",
+        )
+        BankStatementBalance.objects.create(
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("-3621.93"),
+            source=BankStatementBalance.Source.MANUAL,
+        )
+        Transaction.objects.create(
+            date=dt.date(2026, 6, 15),
+            vendor="Acme",
+            amount=Decimal("568.38"),
+            gl_account="Operating Checking",
+            qb_transaction_id="QB-1",
+            source_type="Purchase",
+            realm_id="realm-a",
+        )
+
+        self.client.post("/dashboard/reconcile/", {"month": "2026-06", "realm_id": "realm-a"})
+        resp = self.client.get("/dashboard/?company=realm-a&month=2026-06")
+        self.assertContains(resp, "Balance")
+        self.assertContains(resp, "Bank ending balance")
+
+    def test_set_bank_balance_view_creates_row(self) -> None:
+        from core.models import QBAccount
+
+        QBAccount.objects.create(
+            realm_id="realm-a", account_id="qb-acc-1", name="Operating Checking",
+            account_type="Bank",
+        )
+        resp = self.client.post(
+            "/dashboard/balance/set/",
+            {
+                "month": "2026-06",
+                "realm_id": "realm-a",
+                "qb_account_id": "qb-acc-1",
+                "ending_balance": "-3621.93",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        from core.models import BankStatementBalance
+        self.assertEqual(BankStatementBalance.objects.count(), 1)
+        balance = BankStatementBalance.objects.first()
+        self.assertEqual(balance.ending_balance, Decimal("-3621.93"))
+        self.assertEqual(balance.account_name, "Operating Checking")
+        self.assertEqual(balance.source, "manual")
+
+
 class DashboardActionViewTests(TestCase):
     def setUp(self) -> None:
         from django.contrib.auth import get_user_model
