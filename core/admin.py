@@ -1,6 +1,6 @@
 """Django admin registration for the core models (Prompt 2 — Postgres Schema).
 
-All four models are registered with list displays, filters, and search fields tuned
+All models are registered with list displays, filters, and search fields tuned
 for an internal reviewer scanning the close data.
 """
 from __future__ import annotations
@@ -11,11 +11,20 @@ from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
     BankTransaction,
+    ClientMapping,
     CloseSummary,
+    ConnectWiseCompany,
+    ConnectWiseWorkRole,
+    ExpenseEntry,
     Flag,
+    Invoice,
+    InvoiceLine,
+    ProductEntry,
     QBAccount,
+    QBCustomer,
     QBToken,
     QuickBooksCompany,
+    TimeEntry,
     Transaction,
 )
 
@@ -94,3 +103,67 @@ class AccountReconciliationStateAdmin(admin.ModelAdmin):
     list_filter = ("status", "month")
     search_fields = ("qb_account_id", "realm_id")
     readonly_fields = ("updated_at",)
+
+
+@admin.register(QBCustomer)
+class QBCustomerAdmin(admin.ModelAdmin):
+    list_display = ("name", "customer_id", "active", "realm_id")
+    list_filter = ("active",)
+    search_fields = ("name", "customer_id", "realm_id")
+
+
+@admin.register(ConnectWiseCompany)
+class ConnectWiseCompanyAdmin(admin.ModelAdmin):
+    list_display = ("name", "connectwise_id", "realm_id")
+    search_fields = ("name", "connectwise_id", "realm_id")
+
+
+@admin.register(ClientMapping)
+class ClientMappingAdmin(admin.ModelAdmin):
+    list_display = ("connectwise_company", "qbo_customer", "billing_model", "flat_fee_amount", "realm_id")
+    list_filter = ("billing_model",)
+    search_fields = ("connectwise_company__name", "qbo_customer__name", "realm_id")
+
+
+@admin.register(ConnectWiseWorkRole)
+class ConnectWiseWorkRoleAdmin(admin.ModelAdmin):
+    list_display = ("role_name", "burden_rate", "realm_id")
+    search_fields = ("role_name", "realm_id")
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ("customer_name", "invoice_date", "total_amount", "realm_id")
+    list_filter = ("invoice_date",)
+    search_fields = ("customer_name", "qb_invoice_id", "realm_id")
+    date_hierarchy = "invoice_date"
+
+
+@admin.register(InvoiceLine)
+class InvoiceLineAdmin(admin.ModelAdmin):
+    list_display = ("invoice", "line_number", "amount", "service_item")
+    search_fields = ("description", "service_item")
+
+
+@admin.register(TimeEntry)
+class TimeEntryAdmin(admin.ModelAdmin):
+    list_display = ("connectwise_company", "date", "technician", "hours", "work_role", "realm_id")
+    list_filter = ("date", "work_role")
+    search_fields = ("connectwise_company__name", "technician", "ticket_number")
+    date_hierarchy = "date"
+
+
+@admin.register(ExpenseEntry)
+class ExpenseEntryAdmin(admin.ModelAdmin):
+    list_display = ("connectwise_company", "date", "amount", "description", "realm_id")
+    list_filter = ("date",)
+    search_fields = ("connectwise_company__name", "description")
+    date_hierarchy = "date"
+
+
+@admin.register(ProductEntry)
+class ProductEntryAdmin(admin.ModelAdmin):
+    list_display = ("connectwise_company", "date", "amount", "description", "realm_id")
+    list_filter = ("date",)
+    search_fields = ("connectwise_company__name", "description")
+    date_hierarchy = "date"

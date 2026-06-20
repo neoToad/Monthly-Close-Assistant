@@ -3,6 +3,26 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(models): connectwise step 1 — add QBO customer, invoice, and ConnectWise activity models
+
+- Added `QBCustomer`, `ConnectWiseCompany`, `ClientMapping`, `ConnectWiseWorkRole`,
+  `Invoice`, `InvoiceLine`, `TimeEntry`, `ExpenseEntry`, and `ProductEntry` to
+  `core/models.py` with realm/company scoping and appropriate unique constraints.
+- Extended `FlagType` with `CONNECTWISE_UNBILLED`, `CONNECTWISE_MARGIN`, and
+  `CONNECTWISE_MISSING_MAPPING`; increased `Flag.flag_type` max_length to 30.
+- Updated the pre-production squashed migration `core/migrations/0001_initial.py`
+  to include all new tables and flag-type choices.
+- Registered the new models in `core/admin.py`, including a `ClientMappingAdmin`
+  tuned for manual mapping workflows.
+- Added model-level validation ensuring `ClientMapping.flat_fee_amount` is populated
+  when `billing_model=flat_fee`.
+- Added `core/tests/test_connectwise_models.py` with 22 tests covering defaults,
+  choices, constraints, and the flat-fee validation rule.
+- Updated `core/tests/test_models.py` admin-registration test to include the new
+  models.
+- Full core test suite passes **317 tests**; `makemigrations --check --dry-run`
+  reports no changes.
+
 ## test(services): add missing idempotency tests (refactor plan 2.6)
 
 - Added `test_dry_run_is_idempotent` and `test_apply_is_idempotent_via_applied_suggestions`

@@ -1,13 +1,15 @@
 # Current Task
 
-Step 5 - Update task docs
+ConnectWise Step 1 — Models and migration
 
 Actively working on:
-- Recording completion of the refactor plan recommended next step.
-- Updating `docs/TODO.md`, `docs/plans/refactor_plan.md`, and `docs/CHANGELOG.md`.
+- Adding `QBCustomer`, `Invoice`, `InvoiceLine`, `ConnectWiseCompany`, `ClientMapping`, `ConnectWiseWorkRole`, `TimeEntry`, `ExpenseEntry`, and `ProductEntry` models.
+- Extending `FlagType` with ConnectWise-specific flag types.
+- Updating the squashed migration `core/migrations/0001_initial.py` to include all new tables.
+- Writing model tests first (TDD) in `core/tests/test_connectwise_models.py`.
 
 Blockers or decisions:
-- Naming decision is finalized: keep `QBAccount.account_id` and `Transaction.gl_account`, with documented semantics, to avoid unnecessary schema churn.
+- None.
 
 Next step:
-- Summarize changed files, verification results, and the commit message for the user.
+- After tests pass and `makemigrations --check --dry-run` reports no changes, commit and move to Step 2 (QBO customer/invoice sync).

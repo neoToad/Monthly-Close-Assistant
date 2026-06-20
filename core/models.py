@@ -10,6 +10,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Optional
 
+from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
@@ -249,6 +250,9 @@ class FlagType(models.TextChoices):
     RECONCILIATION = "reconciliation", "Reconciliation"
     ANOMALY = "anomaly", "Anomaly"
     BALANCE_RECONCILIATION = "balance_reconciliation", "Balance Reconciliation"
+    CONNECTWISE_UNBILLED = "connectwise_unbilled", "ConnectWise Unbilled"
+    CONNECTWISE_MARGIN = "connectwise_margin", "ConnectWise Margin Erosion"
+    CONNECTWISE_MISSING_MAPPING = "connectwise_missing_mapping", "ConnectWise Missing Mapping"
 
 
 class Severity(models.TextChoices):
@@ -286,7 +290,7 @@ class Flag(models.Model):
         db_index=True,
         help_text="QuickBooks company/realm id this flag belongs to.",
     )
-    flag_type = models.CharField(max_length=25, choices=FlagType.choices)
+    flag_type = models.CharField(max_length=30, choices=FlagType.choices)
     transaction = models.ForeignKey(
         Transaction,
         null=True,
@@ -484,6 +488,446 @@ class CloseSummary(models.Model):
 
     def __str__(self) -> str:
         return f"Close summary {self.month} ({self.status})"
+
+
+# -----------------------------------------------------------------------------
+# QBO customer / invoice master data (ConnectWise integration)
+# -----------------------------------------------------------------------------
+
+
+class QBCustomer(models.Model):
+    """QuickBooks Online customer master row for a connected realm.
+
+    Stored so ConnectWise reconciliation can map ConnectWise companies to QBO
+    customers and compare activity against QBO invoice totals.
+    """
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="qb_customers",
+        help_text="QuickBooks company this customer belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this customer belongs to.",
+    )
+    customer_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks customer id (natural key scoped by realm).",
+    )
+    name = models.CharField(max_length=200, help_text="Customer name as shown in QBO.")
+    active = models.BooleanField(default=True, help_text="Whether QBO marks the customer active.")
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = [["company", "customer_id"]]
+        verbose_name = "QuickBooks customer"
+        verbose_name_plural = "QuickBooks customers"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ConnectWiseCompany(models.Model):
+    """ConnectWise company master row for a connected realm."""
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="connectwise_companies",
+        help_text="QuickBooks company this ConnectWise company belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this ConnectWise company belongs to.",
+    )
+    connectwise_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="ConnectWise company id (natural key scoped by realm).",
+    )
+    name = models.CharField(max_length=200, help_text="ConnectWise company name.")
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = [["company", "connectwise_id"]]
+        verbose_name = "ConnectWise company"
+        verbose_name_plural = "ConnectWise companies"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class BillingModel(models.TextChoices):
+    """How a mapped client is billed in QuickBooks."""
+
+    HOURLY = "hourly", "Hourly / T&M"
+    FLAT_FEE = "flat_fee", "Flat Fee / Managed Services"
+    RETAINER = "retainer", "Retainer"
+
+
+class ClientMapping(models.Model):
+    """Manual mapping between a ConnectWise company and a QBO customer.
+
+    ``billing_model`` drives which reconciliation math is used. ``flat_fee_amount``
+    is the monthly revenue target for flat-fee clients. ``default_burden_rate`` is
+    an optional per-client override for cost-to-serve calculations.
+    """
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="client_mappings",
+        help_text="QuickBooks company this mapping belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this mapping belongs to.",
+    )
+    connectwise_company = models.ForeignKey(
+        ConnectWiseCompany,
+        on_delete=models.CASCADE,
+        related_name="client_mapping",
+        help_text="ConnectWise company side of the mapping.",
+    )
+    qbo_customer = models.ForeignKey(
+        QBCustomer,
+        on_delete=models.CASCADE,
+        related_name="client_mapping",
+        help_text="QuickBooks Online customer side of the mapping.",
+    )
+    billing_model = models.CharField(
+        max_length=20,
+        choices=BillingModel.choices,
+        default=BillingModel.HOURLY,
+        help_text="Revenue model used for reconciliation.",
+    )
+    flat_fee_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Monthly flat-fee revenue target (required when billing_model=flat_fee).",
+    )
+    default_burden_rate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Optional per-client default burden rate for time cost-to-serve.",
+    )
+
+    class Meta:
+        unique_together = [
+            ["company", "connectwise_company"],
+            ["company", "qbo_customer"],
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.billing_model == BillingModel.FLAT_FEE and self.flat_fee_amount is None:
+            raise ValidationError(
+                {"flat_fee_amount": "flat_fee_amount is required for flat_fee billing model."}
+            )
+
+    def __str__(self) -> str:
+        return f"{self.connectwise_company.name} → {self.qbo_customer.name}"
+
+
+class ConnectWiseWorkRole(models.Model):
+    """Burden rate configuration for a ConnectWise work role.
+
+    Used to compute labor cost-to-serve. When no role-specific rate exists, the
+    global default from Django settings is used.
+    """
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="connectwise_work_roles",
+        help_text="QuickBooks company this role belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this role belongs to.",
+    )
+    role_name = models.CharField(max_length=100, help_text="ConnectWise work role name.")
+    burden_rate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Fully-loaded hourly cost for this role.",
+    )
+
+    class Meta:
+        ordering = ["role_name"]
+        unique_together = [["company", "role_name"]]
+        verbose_name = "ConnectWise work role"
+        verbose_name_plural = "ConnectWise work roles"
+
+    def __str__(self) -> str:
+        return f"{self.role_name} (${self.burden_rate}/hr)"
+
+
+class Invoice(models.Model):
+    """QuickBooks Online invoice ingested for customer/month reconciliation."""
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="invoices",
+        help_text="QuickBooks company this invoice belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this invoice belongs to.",
+    )
+    qb_invoice_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks invoice id (natural key scoped by realm).",
+    )
+    customer = models.ForeignKey(
+        QBCustomer,
+        on_delete=models.CASCADE,
+        related_name="invoices",
+        help_text="QBO customer this invoice is billed to.",
+    )
+    customer_name = models.CharField(
+        max_length=200,
+        help_text="Denormalized customer name for fast display.",
+    )
+    invoice_date = models.DateField(help_text="Invoice date as recorded in QBO.")
+    total_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Total invoice amount in USD.",
+    )
+
+    class Meta:
+        ordering = ["-invoice_date", "customer_name"]
+        unique_together = [["company", "qb_invoice_id"]]
+
+    def __str__(self) -> str:
+        return f"{self.customer_name} — {self.invoice_date} (${self.total_amount})"
+
+
+class InvoiceLine(models.Model):
+    """Line-level detail for a QuickBooks Online invoice.
+
+    Ingested for future drill-down; reconciliation currently uses Invoice.total_amount.
+    """
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="invoice_lines",
+        help_text="QuickBooks company this line belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this line belongs to.",
+    )
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="lines",
+        help_text="Invoice this line belongs to.",
+    )
+    line_number = models.PositiveIntegerField(help_text="Line number within the invoice.")
+    description = models.TextField(blank=True, default="", help_text="Line description.")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Line amount in USD.")
+    service_item = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="QBO service item name, if available.",
+    )
+
+    class Meta:
+        ordering = ["invoice", "line_number"]
+        unique_together = [["company", "invoice", "line_number"]]
+
+    def __str__(self) -> str:
+        return f"Line {self.line_number} of {self.invoice.qb_invoice_id}"
+
+
+class TimeEntry(models.Model):
+    """Billable ConnectWise time entry for cost-to-serve and leakage checks."""
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="connectwise_time_entries",
+        help_text="QuickBooks company this time entry belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this time entry belongs to.",
+    )
+    connectwise_entry_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="ConnectWise time entry id (natural key scoped by realm).",
+    )
+    connectwise_company = models.ForeignKey(
+        ConnectWiseCompany,
+        on_delete=models.CASCADE,
+        related_name="time_entries",
+        help_text="ConnectWise company this time entry is for.",
+    )
+    agreement_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="ConnectWise agreement name, if available.",
+    )
+    ticket_number = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="ConnectWise ticket number, if available.",
+    )
+    technician = models.CharField(max_length=100, help_text="Technician who logged the time.")
+    date = models.DateField(help_text="Date the time was logged.")
+    hours = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        help_text="Hours logged.",
+    )
+    billable_rate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Hourly billable rate, if known.",
+    )
+    work_role = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="ConnectWise work role for burden-rate lookup.",
+    )
+    is_billable = models.BooleanField(
+        default=True,
+        help_text="Whether the time entry is billable.",
+    )
+
+    class Meta:
+        ordering = ["-date", "connectwise_company", "technician"]
+        unique_together = [["company", "connectwise_entry_id"]]
+
+    def __str__(self) -> str:
+        return f"{self.connectwise_company.name} — {self.date} {self.hours}h ({self.technician})"
+
+
+class ExpenseEntry(models.Model):
+    """ConnectWise expense entry for cost-to-serve and leakage checks."""
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="connectwise_expense_entries",
+        help_text="QuickBooks company this expense entry belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this expense entry belongs to.",
+    )
+    connectwise_entry_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="ConnectWise expense entry id (natural key scoped by realm).",
+    )
+    connectwise_company = models.ForeignKey(
+        ConnectWiseCompany,
+        on_delete=models.CASCADE,
+        related_name="expense_entries",
+        help_text="ConnectWise company this expense entry is for.",
+    )
+    agreement_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="ConnectWise agreement name, if available.",
+    )
+    date = models.DateField(help_text="Date the expense was logged.")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Expense amount in USD.")
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Expense description.",
+    )
+
+    class Meta:
+        ordering = ["-date", "connectwise_company"]
+        unique_together = [["company", "connectwise_entry_id"]]
+
+    def __str__(self) -> str:
+        return f"{self.connectwise_company.name} — {self.date} ${self.amount}"
+
+
+class ProductEntry(models.Model):
+    """ConnectWise product entry for cost-to-serve and leakage checks."""
+
+    company = models.ForeignKey(
+        "QuickBooksCompany",
+        on_delete=models.CASCADE,
+        related_name="connectwise_product_entries",
+        help_text="QuickBooks company this product entry belongs to.",
+    )
+    realm_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="QuickBooks company/realm id this product entry belongs to.",
+    )
+    connectwise_entry_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="ConnectWise product entry id (natural key scoped by realm).",
+    )
+    connectwise_company = models.ForeignKey(
+        ConnectWiseCompany,
+        on_delete=models.CASCADE,
+        related_name="product_entries",
+        help_text="ConnectWise company this product entry is for.",
+    )
+    agreement_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="ConnectWise agreement name, if available.",
+    )
+    date = models.DateField(help_text="Date the product was logged.")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Product amount in USD.")
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Product description.",
+    )
+
+    class Meta:
+        ordering = ["-date", "connectwise_company"]
+        unique_together = [["company", "connectwise_entry_id"]]
+
+    def __str__(self) -> str:
+        return f"{self.connectwise_company.name} — {self.date} ${self.amount}"
+
+
+# -----------------------------------------------------------------------------
+# QuickBooks OAuth tokens
+# -----------------------------------------------------------------------------
 
 
 class QBToken(models.Model):

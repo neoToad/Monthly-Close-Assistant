@@ -31,6 +31,16 @@
 - Complete: expose dashboard generation with force/cash-only support.
 - Complete: add view tests for dashboard generation.
 
+## ConnectWise integration (`docs/plans/connectwise_integration_plan.md`)
+
+- Complete: Step 1 — add QBO customer/invoice and ConnectWise activity models.
+- Next: Step 2 — sync QBO customers and invoices.
+- Next: Step 3 — synthetic ConnectWise feed generator with scenarios.
+- Next: Step 4 — ConnectWise-to-QBO reconciliation engine.
+- Next: Step 5 — `run_connectwise_reconciliation` management command.
+- Next: Step 6 — dashboard Client Reconciliation (ConnectWise) section.
+- Next: Step 7 — documentation and final verification.
+
 ## Refactor plan (`docs/plans/refactor_plan.md`)
 
 - Complete: Step 1 audit and Step 2 execution.
