@@ -636,3 +636,49 @@ class AnomalyDetectionCommandTests(TestCase):
         call_command("run_reconciliation", "2025-01", "--realm-id", "realm-a")
         second_count = Flag.objects.filter(flag_type=FlagType.ANOMALY).count()
         self.assertEqual(second_count, first_count)
+
+
+class RunConnectWiseReconciliationCommandTests(TestCase):
+    """Tests for the run_connectwise_reconciliation management command."""
+
+    def test_no_connectwise_data_exits_cleanly(self) -> None:
+        out = StringIO()
+        call_command(
+            "run_connectwise_reconciliation", "2025-01", "--realm-id", "realm-cw-cmd",
+            stdout=out,
+        )
+        output = out.getvalue()
+        self.assertIn("clients checked", output.lower())
+        self.assertIn("unbilled flags", output.lower())
+        self.assertIn("margin flags", output.lower())
+        self.assertIn("missing mappings", output.lower())
+        self.assertEqual(Flag.objects.count(), 0)
+
+    def test_missing_mapping_printed_in_summary(self) -> None:
+        from core.engines import generate_connectwise_feed
+
+        generate_connectwise_feed(
+            month="2025-01", realm_id="realm-cw-cmd", scenario="missing_mapping"
+        )
+        out = StringIO()
+        call_command(
+            "run_connectwise_reconciliation", "2025-01", "--realm-id", "realm-cw-cmd",
+            stdout=out,
+        )
+        output = out.getvalue()
+        self.assertIn("Clients checked:   1", output)
+        self.assertIn("Missing mappings:  1", output)
+        self.assertIn("Unbilled flags:    0", output)
+        self.assertIn("Margin flags:      0", output)
+        self.assertEqual(
+            Flag.objects.filter(
+                realm_id="realm-cw-cmd", flag_type=FlagType.CONNECTWISE_MISSING_MAPPING
+            ).count(),
+            1,
+        )
+
+    def test_requires_realm_id_when_no_token(self) -> None:
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("run_connectwise_reconciliation", "2025-01")

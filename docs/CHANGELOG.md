@@ -3,6 +3,28 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(engines): connectwise step 4 — add reconciliation engine
+
+- Implemented `core/engines/connectwise_reconciliation.py::run_connectwise_reconciliation`.
+- Compares ConnectWise activity (time, expenses, products) to QBO invoice totals per
+  client and month, creating three new flag types:
+  - `CONNECTWISE_UNBILLED` for hourly/retainer clients with leakage above threshold.
+  - `CONNECTWISE_MARGIN` for flat-fee clients whose margin falls below target/warn/critical.
+  - `CONNECTWISE_MISSING_MAPPING` for ConnectWise companies without a `ClientMapping`.
+- Burden rate resolution is hierarchical: `ConnectWiseWorkRole.burden_rate`, then
+  `ClientMapping.default_burden_rate`, then a global default read from Django settings
+  (`CONNECTWISE_DEFAULT_BURDEN_RATE`) with a safe constant fallback.
+- Added ConnectWise threshold constants to `core/common/constants.py`:
+  `CONNECTWISE_UNBILLED_THRESHOLD`, `CONNECTWISE_TARGET_MARGIN`,
+  `CONNECTWISE_MARGIN_WARN`, `CONNECTWISE_MARGIN_CRITICAL`, and
+  `CONNECTWISE_DEFAULT_BURDEN_RATE`.
+- Exported `run_connectwise_reconciliation` from `core/engines/__init__.py`.
+- Added 8 tests in `core/tests/test_connectwise_reconciliation.py` covering leakage,
+  margin erosion, profitable flat-fee clients, missing mappings, idempotency,
+  role-specific burden rates, and large-leakage severity.
+- Fixed the role-specific burden-rate test value so it genuinely crosses the margin target.
+- Full core test suite passes **347 tests**.
+
 ## feat(engines): connectwise step 3 — synthetic connectwise feed generator
 
 - Added six scenario fixtures under `core/fixtures/connectwise_scenarios/`:
