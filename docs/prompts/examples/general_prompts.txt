@@ -1,2 +1,3 @@
 Can you version the changelog and place in the changelogs folder and create a new changelog.md?
 
+Can you read docs/plans/XXX and delete anything completed from the file and leave only the things we still need to do?
