@@ -64,14 +64,32 @@
             <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
             <button type="submit" class="btn">Run Reconciliation</button>
         </form>
-        <form hx-post="{% url 'core:generate_bank_feed' %}"
-              hx-target="#dashboard-content"
-              hx-swap="outerHTML">
-            {% csrf_token %}
-            <input type="hidden" name="month" value="{{ month }}">
-            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
-            <button type="submit" class="btn">Generate Bank Feed</button>
-        </form>
+        <div class="action-group">
+            <form hx-post="{% url 'core:generate_bank_feed' %}"
+                  hx-target="#dashboard-content"
+                  hx-swap="outerHTML">
+                {% csrf_token %}
+                <input type="hidden" name="month" value="{{ month }}">
+                <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+                <button type="submit" class="btn">Generate Synthetic Bank Feed</button>
+            </form>
+            <p class="action-subtitle muted">For testing only — creates fake bank rows from GL data or a scenario fixture.</p>
+        </div>
+
+        <div class="action-group">
+            <form hx-post="{% url 'core:import_bank_feed' %}"
+                  hx-target="#dashboard-content"
+                  hx-swap="outerHTML"
+                  enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="month" value="{{ month }}">
+                <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+                <label for="bank-feed-csv" class="visually-hidden">Bank statement CSV</label>
+                <input id="bank-feed-csv" type="file" name="csv_file" accept=".csv" required>
+                <button type="submit" class="btn primary">Import Bank Feed CSV</button>
+            </form>
+            <p class="action-subtitle muted">Load real bank statement transactions for reconciliation.</p>
+        </div>
         <form hx-post="{% url 'core:draft_summary' %}"
               hx-target="#dashboard-content"
               hx-swap="outerHTML">

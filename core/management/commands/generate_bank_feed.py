@@ -1,8 +1,8 @@
 """``generate_bank_feed`` management command (Prompt 6).
 
-Reads ``Transaction`` records for a given month and creates a deliberately imperfect
-set of ``BankTransaction`` records for reconciliation testing. Discrepancy rates are
-configurable via command-line options.
+(Testing/simulator only.) Reads ``Transaction`` records for a given month and creates
+a deliberately imperfect set of ``BankTransaction`` records for reconciliation
+testing. Discrepancy rates are configurable via command-line options.
 """
 from __future__ import annotations
 
@@ -14,9 +14,8 @@ from core.quickbooks import tokens as qb_tokens
 
 class Command(BaseCommand):
     help = (
-        "(Testing only) Generate synthetic BankTransaction records for a month "
-        "from Transaction records, introducing configurable discrepancies for "
-        "reconciliation testing."
+        "(Testing/simulator only) Generate synthetic BankTransaction records for a month, "
+        "introducing configurable discrepancies for reconciliation testing."
     )
 
     def add_arguments(self, parser) -> None:

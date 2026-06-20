@@ -13,6 +13,7 @@ from io import StringIO
 from unittest import mock
 
 from django.core.management import call_command
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 
 from core.models import QuickBooksCompany
@@ -770,6 +771,20 @@ class GenerateBankFeedViewTests(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
 
+    def test_dashboard_shows_synthetic_bank_feed_button(self) -> None:
+        _company("realm-a")
+        resp = self.client.get("/dashboard/?company=realm-a&month=2025-01")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Generate Synthetic Bank Feed")
+        self.assertContains(resp, "For testing only")
+
+    def test_dashboard_shows_import_bank_feed_csv_form(self) -> None:
+        _company("realm-a")
+        resp = self.client.get("/dashboard/?company=realm-a&month=2025-01")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Import Bank Feed CSV")
+        self.assertContains(resp, "Load real bank statement")
+
     def test_generate_bank_feed_creates_rows(self) -> None:
         from core.models import Transaction
 
@@ -790,7 +805,7 @@ class GenerateBankFeedViewTests(TestCase):
         )
 
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Bank feed generated")
+        self.assertContains(resp, "Synthetic bank feed generated")
         from core.models import BankTransaction
         self.assertGreater(BankTransaction.objects.count(), 0)
 
@@ -855,8 +870,83 @@ class GenerateBankFeedViewTests(TestCase):
             {"month": "2025-01", "realm_id": "realm-a", "force": "true"},
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Bank feed generated")
+        self.assertContains(resp, "Synthetic bank feed generated")
         self.assertEqual(BankTransaction.objects.count(), first_count)
+
+
+class ImportBankFeedViewTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reviewer", password="test")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_import_bank_feed_csv_creates_rows(self) -> None:
+        from core.models import BankTransaction
+
+        _company("realm-a")
+        csv_file = SimpleUploadedFile(
+            "statement.csv",
+            b"date,amount,vendor\n2025-01-15,100.00,Acme Corp\n",
+            content_type="text/csv",
+        )
+
+        resp = self.client.post(
+            "/dashboard/bank-feed/import/",
+            {
+                "month": "2025-01",
+                "realm_id": "realm-a",
+                "csv_file": csv_file,
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bank feed CSV imported")
+        self.assertEqual(BankTransaction.objects.count(), 1)
+        self.assertEqual(BankTransaction.objects.first().source, "csv_import")
+
+    def test_import_invalid_csv_returns_400_notice(self) -> None:
+        from core.models import BankTransaction
+
+        _company("realm-a")
+        csv_file = SimpleUploadedFile(
+            "statement.csv",
+            b"date,amount\n2025-01-15,not-a-number\n",
+            content_type="text/csv",
+        )
+
+        resp = self.client.post(
+            "/dashboard/bank-feed/import/",
+            {
+                "month": "2025-01",
+                "realm_id": "realm-a",
+                "csv_file": csv_file,
+            },
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertContains(resp, "Bank feed CSV import failed", status_code=400)
+        self.assertEqual(BankTransaction.objects.count(), 0)
+
+    def test_import_non_csv_file_rejected(self) -> None:
+        _company("realm-a")
+        txt_file = SimpleUploadedFile(
+            "statement.txt",
+            b"not a csv",
+            content_type="text/plain",
+        )
+        resp = self.client.post(
+            "/dashboard/bank-feed/import/",
+            {
+                "month": "2025-01",
+                "realm_id": "realm-a",
+                "csv_file": txt_file,
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertContains(resp, ".csv files", status_code=400)
 
 
 class ConnectWiseDashboardViewTests(TestCase):

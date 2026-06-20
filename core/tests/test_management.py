@@ -429,6 +429,58 @@ class GenerateBankFeedCommandTests(TestCase):
         self.assertNotEqual(first_ids, second_ids)
 
 
+class ImportBankFeedCommandTests(TestCase):
+    def _write_csv(self, content: str) -> str:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".csv", delete=False
+        ) as f:
+            f.write(content)
+            return f.name
+
+    def test_import_command_succeeds_with_sample_csv(self) -> None:
+        QuickBooksCompany.objects.for_realm("realm-a")
+        path = self._write_csv("date,amount,vendor\n2025-01-15,100.00,Acme Corp\n")
+        out = StringIO()
+        call_command(
+            "import_bank_feed",
+            "2025-01",
+            "--realm-id",
+            "realm-a",
+            "--csv",
+            path,
+            stdout=out,
+        )
+        self.assertIn("imported", out.getvalue().lower())
+        self.assertEqual(BankTransaction.objects.count(), 1)
+        self.assertEqual(BankTransaction.objects.first().source, BankTransactionSource.CSV_IMPORT)
+
+    def test_import_command_reports_validation_errors(self) -> None:
+        QuickBooksCompany.objects.for_realm("realm-a")
+        path = self._write_csv("date,amount\n2025-01-15,not-a-number\n")
+        from django.core.management.base import CommandError
+
+        out = StringIO()
+        with self.assertRaises(CommandError):
+            call_command(
+                "import_bank_feed",
+                "2025-01",
+                "--realm-id",
+                "realm-a",
+                "--csv",
+                path,
+                stdout=out,
+            )
+        self.assertEqual(BankTransaction.objects.count(), 0)
+
+    def test_import_command_requires_csv(self) -> None:
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("import_bank_feed", "2025-01", "--realm-id", "realm-a")
+
+
 class RunReconciliationCommandTests(TestCase):
     def test_no_data_exits_cleanly(self) -> None:
         out = StringIO()
