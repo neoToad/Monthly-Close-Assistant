@@ -32,12 +32,21 @@ from quickbooks.objects.account import Account
 from quickbooks.objects.bill import Bill
 from quickbooks.objects.billpayment import BillPayment
 from quickbooks.objects.company_info import CompanyInfo
+from quickbooks.objects.customer import Customer
 from quickbooks.objects.deposit import Deposit
+from quickbooks.objects.invoice import Invoice
 from quickbooks.objects.journalentry import JournalEntry
 from quickbooks.objects.purchase import Purchase
 from quickbooks.objects.vendorcredit import VendorCredit
 
-from core.models import QBAccount, QuickBooksCompany, Transaction
+from core.models import (
+    QBAccount,
+    QBCustomer,
+    Invoice as QBOInvoice,
+    InvoiceLine as QBOInvoiceLine,
+    QuickBooksCompany,
+    Transaction,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -530,6 +539,174 @@ def sync_accounts(
 
     logger.info("sync_accounts: created=%s updated=%s", created, updated)
     return {"created": created, "updated": updated, "errors": 0}
+
+
+def sync_customers(
+    qb_client: QuickBooks,
+    qb_token: Optional[Any] = None,
+    realm_id: Optional[str] = None,
+) -> dict:
+    """Pull QuickBooks customers and upsert them into ``QBCustomer``.
+
+    Idempotency is keyed on ``(company, customer_id)``. Existing rows are updated
+    so names and active status stay in sync with QBO.
+    """
+    realm_id = realm_id or getattr(qb_token, "realm_id", None) or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+
+    def _fetch(client: QuickBooks) -> list:
+        return Customer.all(qb=client)
+
+    try:
+        customers = call_with_retry(qb_client, qb_token, _fetch)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("sync_customers: failed to pull customers from QuickBooks")
+        return {
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": 1,
+            "error_message": str(exc),
+        }
+
+    created = updated = skipped = 0
+    for customer in customers:
+        customer_id = str(getattr(customer, "Id", "") or "")
+        name = str(
+            getattr(customer, "FullyQualifiedName", "")
+            or getattr(customer, "DisplayName", "")
+            or getattr(customer, "CompanyName", "")
+            or ""
+        )
+        if not customer_id or not name:
+            skipped += 1
+            continue
+
+        defaults = {
+            "realm_id": realm_id,
+            "name": name,
+            "active": bool(getattr(customer, "Active", True)),
+        }
+        obj, was_created = QBCustomer.objects.update_or_create(
+            company=company,
+            customer_id=customer_id,
+            defaults=defaults,
+        )
+        if was_created:
+            created += 1
+        else:
+            updated += 1
+
+    logger.info("sync_customers: created=%s updated=%s skipped=%s", created, updated, skipped)
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": 0}
+
+
+def sync_invoices(
+    qb_client: QuickBooks,
+    qb_token: Optional[Any] = None,
+    realm_id: Optional[str] = None,
+) -> dict:
+    """Pull QuickBooks invoices and upsert them into ``Invoice`` / ``InvoiceLine``.
+
+    Invoices are keyed on ``(company, qb_invoice_id)``. Existing invoices are
+    updated and their lines are replaced so the local copy stays current. Invoices
+    whose QBO customer is not yet synced locally are skipped.
+    """
+    realm_id = realm_id or getattr(qb_token, "realm_id", None) or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+
+    def _fetch(client: QuickBooks) -> list:
+        return Invoice.all(qb=client)
+
+    try:
+        invoices = call_with_retry(qb_client, qb_token, _fetch)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("sync_invoices: failed to pull invoices from QuickBooks")
+        return {
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": 1,
+            "error_message": str(exc),
+        }
+
+    created = updated = skipped = 0
+    for inv in invoices:
+        qb_invoice_id = str(getattr(inv, "Id", "") or "")
+        txn_date = _parse_date(getattr(inv, "TxnDate", ""))
+        total_amount = _to_decimal(getattr(inv, "TotalAmt", 0))
+        customer_ref = getattr(inv, "CustomerRef", None)
+        customer_id = str(getattr(customer_ref, "value", "") or "")
+        customer_name = _ref_name(customer_ref)
+
+        if not qb_invoice_id or txn_date is None:
+            skipped += 1
+            continue
+
+        try:
+            customer = QBCustomer.objects.get(company=company, customer_id=customer_id)
+        except QBCustomer.DoesNotExist:
+            logger.warning(
+                "sync_invoices: skipping invoice %s; QBO customer %s not found locally",
+                qb_invoice_id,
+                customer_id,
+            )
+            skipped += 1
+            continue
+
+        invoice_defaults = {
+            "realm_id": realm_id,
+            "customer": customer,
+            "customer_name": customer_name or customer.name,
+            "invoice_date": txn_date,
+            "total_amount": total_amount,
+        }
+        invoice_obj, was_created = QBOInvoice.objects.update_or_create(
+            company=company,
+            qb_invoice_id=qb_invoice_id,
+            defaults=invoice_defaults,
+        )
+
+        # Replace invoice lines.
+        QBOInvoiceLine.objects.filter(invoice=invoice_obj).delete()
+        lines_to_create: list[QBOInvoiceLine] = []
+        for line_number, line in enumerate(getattr(inv, "Line", []) or [], start=1):
+            line_id = str(getattr(line, "Id", "") or "")
+            if not line_id:
+                # QuickBooks summary/sub-total lines may not have an Id; skip them.
+                continue
+            description = str(getattr(line, "Description", "") or "")
+            amount = _to_decimal(getattr(line, "Amount", 0))
+            detail = getattr(line, "SalesItemLineDetail", None) or getattr(
+                line, "SalesItemLineDetail", None
+            )
+            service_item = _ref_name(getattr(detail, "ItemRef", None)) if detail else ""
+            lines_to_create.append(
+                QBOInvoiceLine(
+                    company=company,
+                    realm_id=realm_id,
+                    invoice=invoice_obj,
+                    line_number=line_number,
+                    description=description,
+                    amount=amount,
+                    service_item=service_item,
+                )
+            )
+        if lines_to_create:
+            QBOInvoiceLine.objects.bulk_create(lines_to_create)
+
+        if was_created:
+            created += 1
+        else:
+            updated += 1
+
+    logger.info(
+        "sync_invoices: created=%s updated=%s skipped=%s",
+        created,
+        updated,
+        skipped,
+    )
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": 0}
 
 
 def _parse_general_ledger_report(report: Any) -> dict[str, Decimal]:

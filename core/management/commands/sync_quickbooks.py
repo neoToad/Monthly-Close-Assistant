@@ -34,6 +34,16 @@ class Command(BaseCommand):
             action="store_true",
             help="Skip syncing the chart of accounts (QBAccount).",
         )
+        parser.add_argument(
+            "--skip-customers",
+            action="store_true",
+            help="Skip syncing QuickBooks Online customers (QBCustomer).",
+        )
+        parser.add_argument(
+            "--skip-invoices",
+            action="store_true",
+            help="Skip syncing QuickBooks Online invoices (Invoice / InvoiceLine).",
+        )
 
     def handle(self, *args, **options) -> None:
         realm_id = options.get("realm_id")
@@ -100,6 +110,40 @@ class Command(BaseCommand):
                     self.stdout.write(
                         f"  Accounts: created={account_result['created']} "
                         f"updated={account_result['updated']}"
+                    )
+
+            if options.get("skip_customers"):
+                self.stdout.write("  Customers: skipped")
+            else:
+                customer_result = qb_client.sync_customers(qb, qb_token=token, realm_id=token.realm_id)
+                if customer_result.get("errors"):
+                    self.stdout.write(self.style.ERROR(
+                        f"Customer sync failed for {token.realm_id}: "
+                        f"{customer_result.get('error_message', 'unknown error')}"
+                    ))
+                    total_errors += 1
+                else:
+                    self.stdout.write(
+                        f"  Customers: created={customer_result['created']} "
+                        f"updated={customer_result['updated']} "
+                        f"skipped={customer_result['skipped']}"
+                    )
+
+            if options.get("skip_invoices"):
+                self.stdout.write("  Invoices: skipped")
+            else:
+                invoice_result = qb_client.sync_invoices(qb, qb_token=token, realm_id=token.realm_id)
+                if invoice_result.get("errors"):
+                    self.stdout.write(self.style.ERROR(
+                        f"Invoice sync failed for {token.realm_id}: "
+                        f"{invoice_result.get('error_message', 'unknown error')}"
+                    ))
+                    total_errors += 1
+                else:
+                    self.stdout.write(
+                        f"  Invoices: created={invoice_result['created']} "
+                        f"updated={invoice_result['updated']} "
+                        f"skipped={invoice_result['skipped']}"
                     )
 
         if total_errors:

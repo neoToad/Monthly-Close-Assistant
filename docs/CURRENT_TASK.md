@@ -1,15 +1,16 @@
 # Current Task
 
-ConnectWise Step 1 — Models and migration
+ConnectWise Step 2 — QBO customer/invoice sync
 
 Actively working on:
-- Adding `QBCustomer`, `Invoice`, `InvoiceLine`, `ConnectWiseCompany`, `ClientMapping`, `ConnectWiseWorkRole`, `TimeEntry`, `ExpenseEntry`, and `ProductEntry` models.
-- Extending `FlagType` with ConnectWise-specific flag types.
-- Updating the squashed migration `core/migrations/0001_initial.py` to include all new tables.
-- Writing model tests first (TDD) in `core/tests/test_connectwise_models.py`.
+- Added `sync_customers` and `sync_invoices` helpers to `core/quickbooks/client.py`.
+- Wired the helpers into the `sync_quickbooks` management command.
+- Added `--skip-customers` and `--skip-invoices` flags.
+- Added `core/tests/test_qbo_invoice_sync.py` with mocked SDK tests.
+- Updated existing sync command tests to patch the new helpers.
 
 Blockers or decisions:
 - None.
 
 Next step:
-- After tests pass and `makemigrations --check --dry-run` reports no changes, commit and move to Step 2 (QBO customer/invoice sync).
+- After commit and push, move to Step 3 (synthetic ConnectWise feed).

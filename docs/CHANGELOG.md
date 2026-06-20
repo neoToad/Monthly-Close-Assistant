@@ -3,6 +3,24 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(quickbooks): connectwise step 2 — sync QBO customers and invoices
+
+- Added `sync_customers` and `sync_invoices` helpers in `core/quickbooks/client.py`
+  using the existing `call_with_retry` wrapper.
+- `sync_customers` upserts `QBCustomer` rows keyed on `(company, customer_id)` and
+  updates names/active status on re-runs.
+- `sync_invoices` upserts `Invoice` rows keyed on `(company, qb_invoice_id)`,
+  replaces `InvoiceLine` detail on updates, and skips invoices whose QBO customer
+  is not yet present locally.
+- Wired both helpers into the `sync_quickbooks` management command with
+  `--skip-customers` and `--skip-invoices` flags.
+- Updated command output to report customer and invoice counts alongside accounts.
+- Added `core/tests/test_qbo_invoice_sync.py` with 13 tests covering customer/invoice
+  creation, updates, idempotency, skipping, and command flags.
+- Updated existing `sync_quickbooks` command tests in `core/tests/test_views.py` and
+  `core/tests/test_multi_company.py` to patch the new helpers.
+- Full core test suite passes **330 tests**.
+
 ## feat(models): connectwise step 1 — add QBO customer, invoice, and ConnectWise activity models
 
 - Added `QBCustomer`, `ConnectWiseCompany`, `ClientMapping`, `ConnectWiseWorkRole`,
