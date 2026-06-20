@@ -1,14 +1,20 @@
 # Current Task
 
-Step 5 — ConnectWise reconciliation management command — IN PROGRESS.
+Step 6 — ConnectWise dashboard section — IN PROGRESS.
 
 Status:
-- Step 4 (reconciliation engine) is complete and verified; 8 tests pass.
-- Now adding `core/management/commands/run_connectwise_reconciliation.py` that calls
-  `run_connectwise_reconciliation` and prints a summary.
-- Will add command tests to `core/tests/test_management.py`.
+- Steps 4 and 5 (reconciliation engine + command) are complete and verified.
+- Now adding dashboard UI:
+  - `connectwise_reconciliation_view` (POST /dashboard/connectwise/reconcile/)
+  - `generate_connectwise_feed_view` (POST /dashboard/connectwise/generate/)
+  - URL wiring in `core/urls.py`
+  - `core/templates/core/connectwise_section.html` partial
+  - Inclusion in `core/templates/core/dashboard_content.html`
+  - Dashboard context helpers for summary metrics and ConnectWise flags
+  - View tests in `core/tests/test_views.py`
 
 Next:
-- Implement the command following the existing bank-feed/reconciliation command patterns.
-- Confirm it prints clients checked, unbilled flags, margin flags, and missing mappings.
-- Run tests, then proceed to Step 6 (dashboard section).
+- Implement the two views following the existing dashboard action patterns.
+- Render a Client Reconciliation section below bank balances.
+- Add tests covering rendering, reconciliation run, and feed generation.
+- Run full suite, then proceed to Step 7 (final docs/verification).

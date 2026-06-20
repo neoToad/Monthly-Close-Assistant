@@ -29,13 +29,26 @@ def flag_type_class(flag_type: str) -> str:
 
     Balance-reconciliation flags are high-level account controls, so they get a
     distinctive ``balance`` class that the ledger can style prominently.
+    ConnectWise flags are grouped under ``connectwise`` for consistent styling.
     """
-    return "balance" if flag_type == FlagType.BALANCE_RECONCILIATION else ""
+    if flag_type == FlagType.BALANCE_RECONCILIATION:
+        return "balance"
+    if flag_type in (
+        FlagType.CONNECTWISE_UNBILLED,
+        FlagType.CONNECTWISE_MARGIN,
+        FlagType.CONNECTWISE_MISSING_MAPPING,
+    ):
+        return "connectwise"
+    return ""
 
 
 @register.filter(name="flag_type_label")
 def flag_type_label(flag_type: str) -> str:
     """Return a short human-readable label for a flag type."""
-    if flag_type == FlagType.BALANCE_RECONCILIATION:
-        return "Balance"
-    return ""
+    labels = {
+        FlagType.BALANCE_RECONCILIATION: "Balance",
+        FlagType.CONNECTWISE_UNBILLED: "Unbilled",
+        FlagType.CONNECTWISE_MARGIN: "Margin",
+        FlagType.CONNECTWISE_MISSING_MAPPING: "Mapping",
+    }
+    return labels.get(flag_type, "")

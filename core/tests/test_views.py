@@ -857,3 +857,58 @@ class GenerateBankFeedViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Bank feed generated")
         self.assertEqual(BankTransaction.objects.count(), first_count)
+
+
+class ConnectWiseDashboardViewTests(TestCase):
+    def setUp(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reviewer", password="test")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_dashboard_renders_connectwise_section(self) -> None:
+        _company("realm-cw")
+
+        resp = self.client.get("/dashboard/?company=realm-cw&month=2025-01")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Client Reconciliation")
+        self.assertContains(resp, "Run ConnectWise Reconciliation")
+        self.assertContains(resp, "Generate ConnectWise Test Feed")
+
+    def test_run_connectwise_reconciliation_creates_flags(self) -> None:
+        from core.engines import generate_connectwise_feed
+
+        generate_connectwise_feed(
+            month="2025-01", realm_id="realm-cw", scenario="missing_mapping"
+        )
+
+        resp = self.client.post(
+            "/dashboard/connectwise/reconcile/",
+            {"month": "2025-01", "realm_id": "realm-cw"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "ConnectWise reconciliation complete")
+        from core.models import Flag, FlagType
+        self.assertEqual(
+            Flag.objects.filter(
+                realm_id="realm-cw", flag_type=FlagType.CONNECTWISE_MISSING_MAPPING
+            ).count(),
+            1,
+        )
+
+    def test_generate_connectwise_feed_creates_activity(self) -> None:
+        from core.models import TimeEntry
+
+        _company("realm-cw")
+        resp = self.client.post(
+            "/dashboard/connectwise/generate/",
+            {"month": "2025-01", "realm_id": "realm-cw", "scenario": "missing_mapping"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "ConnectWise feed generated")
+        self.assertGreater(TimeEntry.objects.filter(realm_id="realm-cw").count(), 0)

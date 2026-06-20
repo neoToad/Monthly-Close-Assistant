@@ -1,0 +1,60 @@
+{% load flag_extras %}
+<div id="connectwise-section" class="connectwise-section">
+    <h3>Client Reconciliation (ConnectWise)</h3>
+
+    <div class="dashboard-actions" aria-label="ConnectWise actions">
+        <form hx-post="{% url 'core:connectwise_reconcile' %}"
+              hx-target="#dashboard-content"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+            <button type="submit" class="btn">Run ConnectWise Reconciliation</button>
+        </form>
+
+        <form hx-post="{% url 'core:connectwise_generate_feed' %}"
+              hx-target="#dashboard-content"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="realm_id" value="{{ realm_id|default:"" }}">
+            <label for="connectwise-scenario" class="visually-hidden">Scenario</label>
+            <select id="connectwise-scenario" name="scenario">
+                <option value="mixed" selected>mixed</option>
+                <option value="hourly_leakage">hourly leakage</option>
+                <option value="flat_fee_profitable">flat fee profitable</option>
+                <option value="flat_fee_margin_erosion">flat fee margin erosion</option>
+                <option value="flat_fee_loss">flat fee loss</option>
+                <option value="missing_mapping">missing mapping</option>
+            </select>
+            <label>
+                <input type="checkbox" name="force" value="true"> Force overwrite
+            </label>
+            <button type="submit" class="btn">Generate ConnectWise Test Feed</button>
+        </form>
+    </div>
+
+    {% if not has_connectwise_data %}
+        <p class="empty-state">
+            No ConnectWise data for {{ month }} yet. Generate a test feed to simulate activity.
+        </p>
+    {% else %}
+        <div class="status-strip" aria-label="ConnectWise summary for {{ month }}">
+            <span><strong>{{ connectwise_clients_checked }}</strong> clients checked</span>
+            <span><strong>${{ connectwise_unbilled_total|floatformat:2 }}</strong> unbilled leakage</span>
+            <span><strong>{{ connectwise_margin_count }}</strong> below margin target</span>
+            <span><strong>{{ connectwise_missing_count }}</strong> missing mappings</span>
+        </div>
+    {% endif %}
+
+    <h4>Open ConnectWise Flags</h4>
+    {% if connectwise_flags %}
+        <div class="ledger-list">
+            {% for flag in connectwise_flags %}
+                {% include "core/flag_row.html" %}
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="empty-state">No ConnectWise flags for {{ month }}.</p>
+    {% endif %}
+</div>

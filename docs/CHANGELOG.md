@@ -3,6 +3,35 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(views): connectwise step 6 — add dashboard section and actions
+
+- Added `connectwise_reconciliation_view` (POST `/dashboard/connectwise/reconcile/`) and
+  `generate_connectwise_feed_view` (POST `/dashboard/connectwise/generate/`) in
+  `core/views.py`.
+- Wired both views into `core/urls.py`.
+- Added `core/templates/core/connectwise_section.html` partial with action buttons,
+  scenario selector, summary metrics, and an open-flags table.
+- Included the ConnectWise section in `core/templates/core/dashboard_content.html`
+  below the bank balances panel.
+- Added `_connectwise_context` dashboard helper to compute summary metrics and list
+  open ConnectWise-specific flags.
+- Updated `core/templatetags/flag_extras.py` to label and style the new ConnectWise
+  flag types.
+- Added 3 dashboard view tests in `core/tests/test_views.py` covering section rendering,
+  reconciliation run, and test-feed generation.
+- Full core test suite passes **353 tests**.
+
+## feat(management): connectwise step 5 — add reconciliation command
+
+- Added `core/management/commands/run_connectwise_reconciliation.py`.
+- Calls `run_connectwise_reconciliation` and prints clients checked, unbilled flags,
+  margin flags, and missing mappings.
+- Mirrors existing command patterns with `--realm-id` falling back to the active
+  QuickBooks token.
+- Added 3 command tests in `core/tests/test_management.py` covering clean exit,
+  missing-mapping summary output, and realm-id requirement.
+- Full core test suite passes **350 tests**.
+
 ## feat(engines): connectwise step 4 — add reconciliation engine
 
 - Implemented `core/engines/connectwise_reconciliation.py::run_connectwise_reconciliation`.

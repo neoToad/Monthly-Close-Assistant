@@ -30,13 +30,23 @@ from django.views.decorators.http import require_http_methods, require_POST
 from core.agents import account_reconcile as reconcile_agent
 from core.common.constants import BALANCE_TOLERANCE, CASH_LIKE_ACCOUNT_TYPES
 from core.common.dates import month_bounds
-from core.engines import generate_bank_feed, run_anomaly_detection, run_reconciliation
+from core.engines import (
+    generate_bank_feed,
+    generate_connectwise_feed,
+    run_anomaly_detection,
+    run_connectwise_reconciliation,
+    run_reconciliation,
+)
 from core.models import (
     BankStatementBalance,
+    BillingModel,
+    ClientMapping,
     CloseSummary,
     CloseSummaryStatus,
+    ConnectWiseCompany,
     Flag,
     FlagStatus,
+    FlagType,
     QBAccount,
     QuickBooksCompany,
     Transaction,
@@ -242,6 +252,61 @@ def _available_months(realm_id: Optional[str] = None) -> list[str]:
     return [f"{d.year}-{d.month:02d}" for d in dates]
 
 
+import re
+
+
+def _parse_leakage_from_reason(reason: str) -> Decimal:
+    """Extract the dollar leakage amount from an unbilled flag reason string."""
+    match = re.search(r"Unbilled leakage \$([0-9,]+\.?\d{0,2})", reason)
+    if match:
+        return Decimal(match.group(1).replace(",", ""))
+    return Decimal("0")
+
+
+def _connectwise_context(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
+    """Build the ConnectWise dashboard panel context for ``month`` and ``realm_id``.
+
+    Returns summary metrics and the open ConnectWise-specific flags.
+    """
+    company = QuickBooksCompany.objects.for_realm(realm_id or "")
+    first, last = month_bounds(month)
+
+    has_connectwise_data = ConnectWiseCompany.objects.filter(
+        company=company, realm_id=realm_id or ""
+    ).exists()
+    clients_checked = ConnectWiseCompany.objects.filter(
+        company=company, realm_id=realm_id or ""
+    ).count()
+
+    cw_flag_types = (
+        FlagType.CONNECTWISE_UNBILLED,
+        FlagType.CONNECTWISE_MARGIN,
+        FlagType.CONNECTWISE_MISSING_MAPPING,
+    )
+    cw_flags = Flag.objects.filter(
+        company=company,
+        realm_id=realm_id or "",
+        flag_type__in=cw_flag_types,
+        status=FlagStatus.OPEN,
+    ).order_by("-created_at")
+
+    unbilled_flags = cw_flags.filter(flag_type=FlagType.CONNECTWISE_UNBILLED)
+    unbilled_total = sum(_parse_leakage_from_reason(f.reason) for f in unbilled_flags)
+
+    return {
+        "has_connectwise_data": has_connectwise_data,
+        "connectwise_clients_checked": clients_checked,
+        "connectwise_unbilled_total": unbilled_total,
+        "connectwise_margin_count": cw_flags.filter(
+            flag_type=FlagType.CONNECTWISE_MARGIN
+        ).count(),
+        "connectwise_missing_count": cw_flags.filter(
+            flag_type=FlagType.CONNECTWISE_MISSING_MAPPING
+        ).count(),
+        "connectwise_flags": cw_flags,
+    }
+
+
 def _bank_balances_context(month: str, realm_id: Optional[str] = None) -> dict[str, Any]:
     """Build the bank balances panel context for ``month`` and optional ``realm_id``.
 
@@ -333,6 +398,7 @@ def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict[str, 
         "has_data": has_data,
     }
     context.update(_bank_balances_context(month, realm_id=realm_id))
+    context.update(_connectwise_context(month, realm_id=realm_id))
     return context
 
 
@@ -589,6 +655,84 @@ def generate_bank_feed_view(request) -> HttpResponse:
             f"{result['amount_shifts']} amount shifts, {result['date_shifts']} date shifts, "
             f"{result['extras']} extras)."
         )
+    return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
+
+
+@login_required
+@require_POST
+def connectwise_reconciliation_view(request) -> HttpResponse:
+    """Run ConnectWise-to-QBO reconciliation for a month and refresh the dashboard."""
+    month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = _request_realm_id(request)
+
+    try:
+        month_bounds(month)
+    except (ValueError, IndexError):
+        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
+
+    try:
+        result = run_connectwise_reconciliation(month, realm_id=realm_id or "")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ConnectWise reconciliation failed for %s/%s", realm_id, month)
+        return _render_dashboard(
+            request,
+            month,
+            realm_id=realm_id,
+            notice=f"ConnectWise reconciliation failed: {exc}",
+        )
+
+    total_flags = result["unbilled_flags"] + result["margin_flags"] + result["missing_mappings"]
+    notice = (
+        f"ConnectWise reconciliation complete for {month}: "
+        f"{result['clients_checked']} client(s) checked, {total_flags} flag(s) "
+        f"({result['unbilled_flags']} unbilled, {result['margin_flags']} margin, "
+        f"{result['missing_mappings']} missing mappings)."
+    )
+    return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
+
+
+@login_required
+@require_POST
+def generate_connectwise_feed_view(request) -> HttpResponse:
+    """Generate synthetic ConnectWise activity for the month and refresh the dashboard."""
+    month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
+    realm_id = _request_realm_id(request)
+    scenario = request.POST.get("scenario") or "mixed"
+    force = request.POST.get("force") == "true"
+
+    try:
+        month_bounds(month)
+    except (ValueError, IndexError):
+        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
+
+    try:
+        result = generate_connectwise_feed(
+            month=month,
+            realm_id=realm_id or "",
+            scenario=scenario,
+            force=force,
+        )
+    except ValueError as exc:
+        return _render_dashboard(
+            request,
+            month,
+            realm_id=realm_id,
+            notice=str(exc),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ConnectWise feed generation failed for %s/%s", realm_id, month)
+        return _render_dashboard(
+            request,
+            month,
+            realm_id=realm_id,
+            notice=f"ConnectWise feed generation failed: {exc}",
+        )
+
+    notice = (
+        f"ConnectWise feed generated for {month}: scenario={result['scenario']}, "
+        f"{result['time_entries_created']} time, {result['expense_entries_created']} expense, "
+        f"{result['product_entries_created']} product entries."
+    )
     return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
 
 
