@@ -7,6 +7,15 @@ Archived changelogs live in `docs/changelogs/`.
 
 ## 2026-06-20
 
+### Step 8 — `fix(views): include balance and ConnectWise flags in dashboard Open Flags list`
+- Updated `core/views.py::_dashboard_context` so `BALANCE_RECONCILIATION` and
+  `CONNECTWISE_*` flags are included in the **Open Flags** list even though they
+  have no linked `Transaction` or `BankTransaction` row.
+- Added tests in `core/tests/test_views.py` verifying balance-reconciliation and
+  ConnectWise missing-mapping reasons render on the dashboard.
+- Verification: `makemigrations --check --dry-run` reports no changes;
+  full test suite passes **377 tests**.
+
 ### Step 7 — `feat(demo): add seed_demo_msp_data command with realistic MSP fixture`
 - Added `core/fixtures/msp_demo_data.py` with chart of accounts, customers, vendors,
   deposits, bills, purchases, journal entries, bill payments, and vendor credits for

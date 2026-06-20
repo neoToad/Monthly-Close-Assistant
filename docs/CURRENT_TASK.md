@@ -2,7 +2,7 @@
 
 Fix the dashboard flag filter so `BALANCE_RECONCILIATION` and `CONNECTWISE_*` flags show up in the **Open Flags** list, then clean up the `demo-msp` seed data I left in the local database.
 
-**Status:** Code fix complete and tested; cleanup pending user confirmation
+**Status:** Code fix committed (`20c7f8e`); cleanup pending user confirmation
 
 **What was built:**
 - Updated `core/views.py::_dashboard_context` to include flags whose linked transaction or bank row is `NULL`.
@@ -17,4 +17,4 @@ Fix the dashboard flag filter so `BALANCE_RECONCILIATION` and `CONNECTWISE_*` fl
 - I have not yet removed the `demo-msp` rows I wrote to your local database while investigating. Say "clean it up" and I will delete them.
 
 **Next step:**
-- Commit the filter fix and tests.
+- Update `docs/CHANGELOG.md` for the fix; then await cleanup confirmation.
