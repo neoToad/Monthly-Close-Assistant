@@ -1,20 +1,17 @@
 # Current Task
 
-Bank feed independence — scope revised.
+No active bank-feed task — scope revised and committed.
 
 Status:
 - CSV bank importer removed from the bank-feed independence implementation.
 - `BankTransaction.source`, synthetic generator relabeling, and independent
   simulator scenarios remain in place on `feature/close-assistant-build`.
+- Commit `9bb33c5` records the removal.
 - Final verification:
   - `docker compose exec web python manage.py makemigrations --check --dry-run` — no changes.
   - `docker compose exec web python manage.py test -v 2` — **361 tests pass**.
 
-Active work:
-- Strip all CSV-import references from `docs/TODO.md` and `docs/CHANGELOG.md`.
-- Stage and commit the removal.
-
-Completed deliverables (kept):
+Kept deliverables:
 - `BankTransaction.source` field with `BankTransactionSource` choices; synthetic
   generator marks rows as `synthetic`.
 - Independent simulator scenario fixture, `--scenario` / `--scenario-file` support
