@@ -21,7 +21,6 @@ urlpatterns = [
     path("dashboard/sync/", views.qb_sync_now, name="qb_sync_now"),
     path("dashboard/reconcile/", views.reconcile_month, name="reconcile_month"),
     path("dashboard/bank-feed/generate/", views.generate_bank_feed_view, name="generate_bank_feed"),
-    path("dashboard/bank-feed/import/", views.import_bank_feed_view, name="import_bank_feed"),
     path("dashboard/connectwise/reconcile/", views.connectwise_reconciliation_view, name="connectwise_reconcile"),
     path("dashboard/connectwise/generate/", views.generate_connectwise_feed_view, name="connectwise_generate_feed"),
     path("dashboard/summary/draft/", views.draft_summary, name="draft_summary"),

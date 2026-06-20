@@ -46,3 +46,19 @@ Archived changelogs live in `docs/changelogs/`.
 - Migration fix: added `core/migrations/0002_banktransaction_source.py` so existing
   databases that applied the original squashed `0001_initial` migration safely gain
   the `source` column without data loss.
+
+### Step 6 — `refactor(bank-feed): remove CSV bank importer after scope change`
+- Deleted `core/engines/bank_feed_import.py` and removed `import_bank_feed_from_csv`
+  from `core/engines/__init__.py`.
+- Deleted `core/management/commands/import_bank_feed.py`.
+- Removed `import_bank_feed_view` and `POST /dashboard/bank-feed/import/` from
+  `core/views.py` and `core/urls.py`.
+- Removed the dashboard CSV upload form from `core/templates/core/dashboard_content.html`.
+- Deleted `core/tests/test_bank_feed_import.py` and all CSV-import tests in
+  `core/tests/test_management.py` and `core/tests/test_views.py`.
+- Kept `BankTransaction.source` and `BankTransactionSource` choices, synthetic
+  generator relabeling, and independent simulator scenarios intact.
+- Updated `docs/TODO.md`, `docs/CURRENT_TASK.md`, and `docs/CHANGELOG.md` to
+  reflect the scope change.
+- Final verification: `makemigrations --check --dry-run` reports no changes;
+  full test suite passes 361 tests.

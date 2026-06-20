@@ -4,9 +4,9 @@
 
 - Complete: add `BankTransaction.source` field and `BankTransactionSource` choices.
 - Complete: set `source=synthetic` on every row created by the synthetic generator.
-- Complete: add CSV import engine `core/engines/bank_feed_import.py`.
-- Complete: add `import_bank_feed` management command.
-- Complete: add `import_bank_feed_view` and dashboard CSV upload form.
+- Skipped: CSV import engine (`core/engines/bank_feed_import.py`) — removed after scope change.
+- Skipped: `import_bank_feed` management command — removed after scope change.
+- Skipped: `import_bank_feed_view` and dashboard CSV upload form — removed after scope change.
 - Complete: relabel synthetic generator button and add testing-only subtitle.
 - Complete: add independent simulator scenario and `--scenario` / `--scenario-file` support.
 - Complete: full test suite passes.

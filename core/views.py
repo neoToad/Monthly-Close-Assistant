@@ -15,7 +15,6 @@ Dashboard endpoints:
 from __future__ import annotations
 
 import datetime as dt
-import io
 import logging
 
 from decimal import Decimal
@@ -34,7 +33,6 @@ from core.common.dates import month_bounds
 from core.engines import (
     generate_bank_feed,
     generate_connectwise_feed,
-    import_bank_feed_from_csv,
     run_anomaly_detection,
     run_connectwise_reconciliation,
     run_reconciliation,
@@ -661,57 +659,6 @@ def generate_bank_feed_view(request) -> HttpResponse:
             f"{result['amount_shifts']} amount shifts, {result['date_shifts']} date shifts, "
             f"{result['extras']} extras)."
         )
-    return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
-
-
-@login_required
-@require_POST
-def import_bank_feed_view(request) -> HttpResponse:
-    """Import a bank statement CSV for the month and refresh the dashboard."""
-    month = request.POST.get("month") or dt.date.today().strftime("%Y-%m")
-    realm_id = _request_realm_id(request)
-
-    try:
-        month_bounds(month)
-    except (ValueError, IndexError):
-        return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
-
-    csv_file = request.FILES.get("csv_file")
-    if not csv_file:
-        return HttpResponseBadRequest("CSV file is required.")
-    if not csv_file.name.lower().endswith(".csv"):
-        return HttpResponseBadRequest("Only .csv files are supported.")
-    if csv_file.size > 5 * 1024 * 1024:
-        return HttpResponseBadRequest("CSV file must be smaller than 5 MB.")
-
-    try:
-        text = csv_file.read().decode("utf-8")
-        result = import_bank_feed_from_csv(
-            csv_file=io.StringIO(text),
-            month=month,
-            realm_id=realm_id or "",
-        )
-    except ValueError as exc:
-        return _render_dashboard(
-            request,
-            month,
-            realm_id=realm_id,
-            notice=f"Bank feed CSV import failed: {exc}",
-            status=400,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Bank feed CSV import failed for %s/%s", realm_id, month)
-        return _render_dashboard(
-            request,
-            month,
-            realm_id=realm_id,
-            notice=f"Bank feed CSV import failed: {exc}",
-            status=400,
-        )
-
-    notice = (
-        f"Bank feed CSV imported for {month}: {result['created']} row(s) created."
-    )
     return _render_dashboard(request, month, realm_id=realm_id, notice=notice)
 
 
