@@ -70,8 +70,22 @@ class Command(BaseCommand):
             action="store_true",
             help=(
                 "Only use transactions that represent actual cash movement "
-                "(Purchase, Deposit, BillPayment, and cash-like JournalEntry lines)."
+                "(Purchase, Deposit, BillPayment, and cash-like JournalEntry lines). "
+                "Ignored when --scenario=independent."
             ),
+        )
+        parser.add_argument(
+            "--scenario",
+            default="derived",
+            choices=["derived", "independent"],
+            help=(
+                "Scenario that drives the bank feed source. 'derived' mutates GL "
+                "transactions; 'independent' uses a fixture of realistic bank rows."
+            ),
+        )
+        parser.add_argument(
+            "--scenario-file",
+            help="Path to a custom JSON scenario fixture (used with --scenario independent).",
         )
 
     def _resolve_realm_id(self, realm_id: str | None) -> str:
@@ -100,6 +114,8 @@ class Command(BaseCommand):
                 force=options["force"],
                 seed=options["seed"],
                 cash_only=options["cash_only"],
+                scenario=options["scenario"],
+                scenario_file=options["scenario_file"],
             )
         except ValueError as exc:
             raise CommandError(str(exc))
@@ -108,8 +124,10 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(result["message"]))
             return
 
+        scenario_label = options["scenario"]
         self.stdout.write(self.style.SUCCESS(
-            f"Bank feed generated for {month}: created={result['created']} bank rows"
+            f"Bank feed generated for {month} (scenario={scenario_label}): "
+            f"created={result['created']} bank rows"
         ))
         self.stdout.write("Discrepancy summary:")
         self.stdout.write(f"  Dropped:          {result['dropped']}")

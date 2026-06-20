@@ -1,22 +1,23 @@
 # Current Task
 
-Bank feed independence — Step 3: add `import_bank_feed` command and dashboard view.
+Bank feed independence — Step 4: add independent simulator scenarios to the bank feed generator.
 
 Status:
 - Implementing `docs/plans/independent_bank_feed_plan.md` on `feature/close-assistant-build`.
-- Step 1 is committed: `BankTransaction.source` field exists, generator marks rows
-  as `synthetic`.
-- Step 2 is committed: `core/engines/bank_feed_import.py` with full test coverage.
+- Step 1 committed: `BankTransaction.source` field and synthetic tracking.
+- Step 2 committed: CSV import engine.
+- Step 3 committed: `import_bank_feed` command, dashboard view, relabeled synthetic button,
+  and CSV upload form.
 
 Active work:
-- Create `core/management/commands/import_bank_feed.py`.
-- Add `import_bank_feed_view` in `core/views.py` and wire `POST /dashboard/bank-feed/import/`.
-- Validate file size/type in the view and return the dashboard content partial with notices.
-- Update `dashboard_content.html`:
-  - Relabel synthetic generator button and add testing-only subtitle.
-  - Add "Import Bank Feed CSV" multipart form with file input.
-- Add view tests and command tests for the new import path.
+- Create `core/fixtures/` package and `core/fixtures/bank_feed_scenarios/independent_default.json`.
+- Extend `generate_bank_feed` in `core/engines/bank_feed.py` with `scenario` and `scenario_file` arguments.
+  - `derived` (default): existing behavior.
+  - `independent`: generate rows from the fixture, randomize dates within the month,
+    apply discrepancies, mark `source=synthetic`.
+- Update `core/management/commands/generate_bank_feed.py` with `--scenario` and `--scenario-file`.
+- Add command tests for `independent` and custom scenario files.
 
 Next step:
-- Run the full test suite for this step, then commit.
-- Step 4 will add independent simulator scenarios.
+- Run the full test suite, then commit.
+- Step 5 will update docs (TODO, CURRENT_TASK, CHANGELOG) and run final verification.

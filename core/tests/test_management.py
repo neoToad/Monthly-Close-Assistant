@@ -288,6 +288,64 @@ class GenerateBankFeedCommandTests(TestCase):
             {BankTransactionSource.SYNTHETIC},
         )
 
+    def test_derived_scenario_uses_gl_transactions(self) -> None:
+        _make_txn(qb_transaction_id="QB-DERIVED", vendor="GL Vendor")
+        call_command(
+            "generate_bank_feed",
+            "2025-01",
+            "--realm-id", "realm-a",
+            "--scenario", "derived",
+            "--drop-rate", "0",
+        )
+        self.assertGreater(BankTransaction.objects.count(), 0)
+        self.assertTrue(
+            BankTransaction.objects.filter(vendor="GL Vendor").exists()
+        )
+
+    def test_independent_scenario_ignores_gl_transactions(self) -> None:
+        _make_txn(qb_transaction_id="QB-INDIE", vendor="GL Vendor")
+        call_command(
+            "generate_bank_feed",
+            "2025-01",
+            "--realm-id", "realm-a",
+            "--scenario", "independent",
+        )
+        self.assertGreater(BankTransaction.objects.count(), 0)
+        self.assertFalse(
+            BankTransaction.objects.filter(vendor="GL Vendor").exists()
+        )
+        self.assertEqual(
+            set(BankTransaction.objects.values_list("source", flat=True)),
+            {BankTransactionSource.SYNTHETIC},
+        )
+
+    def test_independent_scenario_custom_file(self) -> None:
+        import tempfile
+        import json
+
+        QuickBooksCompany.objects.for_realm("realm-a")
+        custom = [{"vendor": "Custom Scenario", "amount": "123.45", "category": "Test"}]
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            json.dump(custom, f)
+            path = f.name
+
+        call_command(
+            "generate_bank_feed",
+            "2025-01",
+            "--realm-id", "realm-a",
+            "--scenario", "independent",
+            "--scenario-file", path,
+            "--extra-rate", "0",
+            "--dup-rate", "0",
+            "--drop-rate", "0",
+        )
+        self.assertEqual(BankTransaction.objects.count(), 1)
+        self.assertEqual(
+            BankTransaction.objects.first().vendor, "Custom Scenario"
+        )
+
     def test_cash_only_excludes_bill_records(self) -> None:
         _make_txn(qb_transaction_id="QB-P", source_type=SourceType.PURCHASE)
         _make_txn(qb_transaction_id="QB-B", source_type=SourceType.BILL)

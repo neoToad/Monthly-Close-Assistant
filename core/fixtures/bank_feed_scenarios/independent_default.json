@@ -1,0 +1,92 @@
+[
+  {
+    "vendor": "POS DEBIT ACME CORP #1234",
+    "amount": "125.00",
+    "category": "Office Supplies",
+    "gl_account": "5000 - Supplies"
+  },
+  {
+    "vendor": "POS DEBIT STAPLES #5678",
+    "amount": "89.99",
+    "category": "Office Supplies",
+    "gl_account": "5000 - Supplies"
+  },
+  {
+    "vendor": "ACH DEPOSIT CUSTOMER PAYMENT",
+    "amount": "-2500.00",
+    "category": "Customer Payment",
+    "gl_account": "1000 - Checking"
+  },
+  {
+    "vendor": "ACH DEPOSIT CLIENT REVENUE",
+    "amount": "-1750.00",
+    "category": "Customer Payment",
+    "gl_account": "1000 - Checking"
+  },
+  {
+    "vendor": "MONTHLY SERVICE FEE",
+    "amount": "25.00",
+    "category": "Bank Fees",
+    "gl_account": "6000 - Bank Fees"
+  },
+  {
+    "vendor": "WIRE TRANSFER FEE",
+    "amount": "15.00",
+    "category": "Bank Fees",
+    "gl_account": "6000 - Bank Fees"
+  },
+  {
+    "vendor": "POS DEBIT OFFICE DEPOT #9012",
+    "amount": "145.67",
+    "category": "Office Supplies",
+    "gl_account": "5000 - Supplies"
+  },
+  {
+    "vendor": "ACH DEBIT RENT PAYMENT",
+    "amount": "3200.00",
+    "category": "Rent",
+    "gl_account": "6100 - Rent"
+  },
+  {
+    "vendor": "ACH DEBIT UTILITIES LLC",
+    "amount": "412.50",
+    "category": "Utilities",
+    "gl_account": "6200 - Utilities"
+  },
+  {
+    "vendor": "POS DEBIT AMAZON.COM #3456",
+    "amount": "67.43",
+    "category": "Software",
+    "gl_account": "5100 - Software"
+  },
+  {
+    "vendor": "ACH DEBIT PAYROLL PROVIDER",
+    "amount": "8500.00",
+    "category": "Payroll",
+    "gl_account": "7000 - Payroll"
+  },
+  {
+    "vendor": "POS DEBIT USPS #7890",
+    "amount": "23.40",
+    "category": "Postage",
+    "gl_account": "5050 - Postage"
+  },
+  {
+    "vendor": "ACH DEBIT INSURANCE PREMIUM",
+    "amount": "1100.00",
+    "category": "Insurance",
+    "gl_account": "6300 - Insurance"
+  },
+  {
+    "vendor": "POS DEBIT BEST BUY #2468",
+    "amount": "399.99",
+    "category": "Equipment",
+    "gl_account": "1500 - Equipment"
+  },
+  {
+    "vendor": "ACH DEPOSIT REFUND",
+    "amount": "-58.00",
+    "category": "Refund",
+    "gl_account": "1000 - Checking"
+  }
+]

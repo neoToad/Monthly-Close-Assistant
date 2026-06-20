@@ -1,17 +1,25 @@
-"""Synthetic bank feed generator for the Monthly Close Assistant (Prompt 6).
+"""Synthetic bank feed simulator for the Monthly Close Assistant (Prompt 6).
 
-This is a **testing-only** helper. It derives ``BankTransaction`` rows from a month's
-``Transaction`` records and deliberately introduces realistic discrepancies so the
-reconciliation logic can be validated against known ground truth. All manipulation
-uses Pandas. It is not intended as a production bank-data source.
+This is a **testing-only** helper. It creates ``BankTransaction`` rows for a month
+using one of two sources:
+
+* ``derived`` (default) — reads ``Transaction`` records and mutates them.
+* ``independent`` — reads a fixture of realistic bank descriptions and randomizes
+  dates within the target month.
+
+It deliberately introduces realistic discrepancies so the reconciliation logic can
+be validated against known ground truth. All manipulation uses Pandas. It is not
+intended as a production bank-data source.
 """
 from __future__ import annotations
 
 import calendar
 import datetime as dt
+import json
 import logging
 import random
 from decimal import Decimal
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -29,6 +37,13 @@ from core.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_INDEPENDENT_SCENARIO = (
+    Path(__file__).resolve().parent.parent
+    / "fixtures"
+    / "bank_feed_scenarios"
+    / "independent_default.json"
+)
 
 
 def _has_qbaccount_data(realm_id: Optional[str]) -> bool:
@@ -69,85 +84,58 @@ def _txns_to_dataframe(txns: list[Transaction]) -> pd.DataFrame:
     return df
 
 
-def generate_bank_feed(
-    month: str,
-    drop_rate: float = 0.05,
-    dup_rate: float = 0.03,
-    amount_shift_rate: float = 0.04,
-    date_shift_rate: float = 0.05,
-    extra_rate: float = 0.03,
-    force: bool = False,
-    seed: Optional[int] = None,
-    realm_id: Optional[str] = None,
-    cash_only: bool = False,
-) -> dict:
-    """Create ``BankTransaction`` records for ``realm_id``/``month`` from ``Transaction`` rows.
+def _load_independent_scenario(scenario_file: Optional[str]) -> list[dict]:
+    """Load the independent bank-feed scenario fixture as a list of template rows."""
+    path = Path(scenario_file) if scenario_file else DEFAULT_INDEPENDENT_SCENARIO
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, list):
+        raise ValueError("Scenario file must contain a JSON list of rows.")
+    return data
 
-    Introduces configurable discrepancies:
 
-    * ``drop_rate`` — fraction of GL transactions omitted from the bank feed.
-    * ``dup_rate`` — fraction of remaining transactions duplicated.
-    * ``amount_shift_rate`` — fraction of rows whose amount is nudged by a small delta.
-    * ``date_shift_rate`` — fraction of rows whose date is shifted 1–2 days.
-    * ``extra_rate`` — fraction of bank-only rows added with no matching GL transaction.
-
-    When ``cash_only=True``, only transactions representing actual cash movement are
-    used: ``Purchase``, ``Deposit``, ``BillPayment``, and ``JournalEntry`` lines whose
-    ``gl_account`` belongs to a cash-like ``QBAccount``. If no ``QBAccount`` data exists
-    for the realm, ``JournalEntry`` rows are included by default to avoid regressions.
-
-    Returns a summary dict with counts for each discrepancy type. Raises ``ValueError``
-    when bank data already exists for the month unless ``force=True``.
-    """
+def _independent_to_dataframe(
+    templates: list[dict], first: dt.date, last: dt.date, seed: Optional[int]
+) -> pd.DataFrame:
+    """Turn independent scenario templates into a DataFrame with random dates."""
+    if not templates:
+        return pd.DataFrame()
     if seed is not None:
         random.seed(seed)
-
-    realm_id = realm_id or ""
-    company = QuickBooksCompany.objects.for_realm(realm_id)
-    first, last = month_bounds(month)
-    txns = Transaction.objects.filter(date__range=(first, last))
-    if realm_id:
-        txns = txns.filter(realm_id=realm_id)
-
-    if cash_only:
-        cash_source_types = {SourceType.PURCHASE, SourceType.DEPOSIT, SourceType.BILL_PAYMENT}
-        cash_txns = txns.filter(source_type__in=cash_source_types)
-        je_qs = txns.filter(source_type=SourceType.JOURNAL_ENTRY)
-        if _has_qbaccount_data(realm_id):
-            cash_names = _cash_like_gl_account_names(realm_id)
-            je_qs = je_qs.filter(gl_account__in=cash_names)
-        # If no QBAccount data exists, include all JournalEntry rows by default.
-        txns = cash_txns.union(je_qs)
-
-    if not txns.exists():
-        return {
-            "month": month,
-            "realm_id": realm_id or "",
-            "created": 0,
-            "dropped": 0,
-            "duplicated": 0,
-            "amount_shifts": 0,
-            "date_shifts": 0,
-            "extras": 0,
-            "message": "No transactions for this month; no bank feed generated.",
-        }
-
-    existing = BankTransaction.objects.filter(date__range=(first, last))
-    if realm_id:
-        existing = existing.filter(realm_id=realm_id)
-    existing = existing.filter(company=company)
-    if existing.exists() and not force:
-        raise ValueError(
-            "Bank transactions already exist for this month. "
-            "Use --force to overwrite."
+    rows = []
+    for template in templates:
+        day = random.randint(1, calendar.monthrange(first.year, first.month)[1])
+        rows.append(
+            {
+                "date": dt.date(first.year, first.month, day),
+                "vendor": template.get("vendor", ""),
+                "amount": Decimal(str(template.get("amount", "0"))),
+                "category": template.get("category", ""),
+                "gl_account": template.get("gl_account", ""),
+                "qb_transaction_id": "",
+                "source_type": "",
+                "matched_transaction_id": None,
+            }
         )
+    return pd.DataFrame(rows)
 
-    if force:
-        existing.delete()
 
-    df = _txns_to_dataframe(txns)
-    original_count = len(df)
+def _apply_discrepancies(
+    df: pd.DataFrame,
+    original_count: int,
+    first: dt.date,
+    drop_rate: float,
+    dup_rate: float,
+    amount_shift_rate: float,
+    date_shift_rate: float,
+    extra_rate: float,
+    seed: Optional[int],
+) -> tuple[pd.DataFrame, int, int, int, int, int]:
+    """Apply configurable discrepancies to a DataFrame of bank rows.
 
+    Returns the modified DataFrame and counts for dropped, duplicated, amount
+    shifts, date shifts, and extras.
+    """
     # Drop rows.
     if drop_rate and len(df) > 0:
         drop_n = max(1, int(round(len(df) * drop_rate))) if len(df) >= 2 else 0
@@ -203,6 +191,130 @@ def generate_bank_feed(
         if extra_rows:
             df = pd.concat([df, pd.DataFrame(extra_rows)], ignore_index=True)
 
+    return df, drop_n, dup_n, amount_shift_n, date_shift_n, extra_n
+
+
+def generate_bank_feed(
+    month: str,
+    drop_rate: float = 0.05,
+    dup_rate: float = 0.03,
+    amount_shift_rate: float = 0.04,
+    date_shift_rate: float = 0.05,
+    extra_rate: float = 0.03,
+    force: bool = False,
+    seed: Optional[int] = None,
+    realm_id: Optional[str] = None,
+    cash_only: bool = False,
+    scenario: str = "derived",
+    scenario_file: Optional[str] = None,
+) -> dict:
+    """Create ``BankTransaction`` records for ``realm_id``/``month``.
+
+    ``scenario`` controls the source of bank rows:
+
+    * ``derived`` (default) — read ``Transaction`` records and mutate them.
+    * ``independent`` — generate rows from a built-in fixture of realistic bank
+      descriptions. Use ``scenario_file`` to load a custom JSON fixture.
+
+    Introduces configurable discrepancies:
+
+    * ``drop_rate`` — fraction of base rows omitted from the bank feed.
+    * ``dup_rate`` — fraction of remaining rows duplicated.
+    * ``amount_shift_rate`` — fraction of rows whose amount is nudged by a small delta.
+    * ``date_shift_rate`` — fraction of rows whose date is shifted 1–2 days.
+    * ``extra_rate`` — fraction of extra bank-only rows added with no matching GL transaction.
+
+    When ``scenario=derived`` and ``cash_only=True``, only transactions representing
+    actual cash movement are used: ``Purchase``, ``Deposit``, ``BillPayment``, and
+    ``JournalEntry`` lines whose ``gl_account`` belongs to a cash-like ``QBAccount``.
+    If no ``QBAccount`` data exists for the realm, ``JournalEntry`` rows are included
+    by default to avoid regressions.
+
+    Returns a summary dict with counts for each discrepancy type. Raises ``ValueError``
+    when bank data already exists for the month unless ``force=True``.
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    realm_id = realm_id or ""
+    company = QuickBooksCompany.objects.for_realm(realm_id)
+    first, last = month_bounds(month)
+
+    if scenario == "derived":
+        txns = Transaction.objects.filter(date__range=(first, last))
+        if realm_id:
+            txns = txns.filter(realm_id=realm_id)
+
+        if cash_only:
+            cash_source_types = {SourceType.PURCHASE, SourceType.DEPOSIT, SourceType.BILL_PAYMENT}
+            cash_txns = txns.filter(source_type__in=cash_source_types)
+            je_qs = txns.filter(source_type=SourceType.JOURNAL_ENTRY)
+            if _has_qbaccount_data(realm_id):
+                cash_names = _cash_like_gl_account_names(realm_id)
+                je_qs = je_qs.filter(gl_account__in=cash_names)
+            # If no QBAccount data exists, include all JournalEntry rows by default.
+            txns = cash_txns.union(je_qs)
+
+        if not txns.exists():
+            return {
+                "month": month,
+                "realm_id": realm_id or "",
+                "created": 0,
+                "dropped": 0,
+                "duplicated": 0,
+                "amount_shifts": 0,
+                "date_shifts": 0,
+                "extras": 0,
+                "message": "No transactions for this month; no bank feed generated.",
+            }
+        df = _txns_to_dataframe(txns)
+    elif scenario == "independent":
+        templates = _load_independent_scenario(scenario_file)
+        df = _independent_to_dataframe(templates, first, last, seed)
+        if df.empty:
+            return {
+                "month": month,
+                "realm_id": realm_id or "",
+                "created": 0,
+                "dropped": 0,
+                "duplicated": 0,
+                "amount_shifts": 0,
+                "date_shifts": 0,
+                "extras": 0,
+                "message": "Independent scenario has no rows; no bank feed generated.",
+            }
+    else:
+        raise ValueError(
+            f"Unknown scenario '{scenario}'. Choose 'derived' or 'independent'."
+        )
+
+    existing = BankTransaction.objects.filter(date__range=(first, last))
+    if realm_id:
+        existing = existing.filter(realm_id=realm_id)
+    existing = existing.filter(company=company)
+    if existing.exists() and not force:
+        raise ValueError(
+            "Bank transactions already exist for this month. "
+            "Use --force to overwrite."
+        )
+
+    if force:
+        existing.delete()
+
+    original_count = len(df)
+
+    df, drop_n, dup_n, amount_shift_n, date_shift_n, extra_n = _apply_discrepancies(
+        df,
+        original_count,
+        first,
+        drop_rate,
+        dup_rate,
+        amount_shift_rate,
+        date_shift_rate,
+        extra_rate,
+        seed,
+    )
+
     # Persist as BankTransaction rows.
     bank_rows = []
     for _, row in df.iterrows():
@@ -227,9 +339,10 @@ def generate_bank_feed(
 
     created = len(bank_rows)
     logger.info(
-        "generate_bank_feed(%s): created=%s dropped=%s duplicated=%s amount_shifts=%s "
-        "date_shifts=%s extras=%s",
+        "generate_bank_feed(%s, scenario=%s): created=%s dropped=%s duplicated=%s "
+        "amount_shifts=%s date_shifts=%s extras=%s",
         month,
+        scenario,
         created,
         drop_n,
         dup_n,
