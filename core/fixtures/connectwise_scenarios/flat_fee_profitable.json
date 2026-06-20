@@ -1,0 +1,47 @@
+{
+  "work_roles": [
+    {"role_name": "Engineer", "burden_rate": "100.00"}
+  ],
+  "clients": [
+    {
+      "connectwise_id": "cw-flat-profitable",
+      "connectwise_company_name": "Flat Profitable Co",
+      "qbo_customer_id": "qbo-flat-profitable",
+      "qbo_customer_name": "Flat Profitable Co",
+      "billing_model": "flat_fee",
+      "flat_fee_amount": "5000.00",
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-fp-001",
+          "day": 8,
+          "technician": "Carol",
+          "hours": "5.00",
+          "billable_rate": "0.00",
+          "work_role": "Engineer",
+          "is_billable": false,
+          "agreement_name": "Managed Services",
+          "ticket_number": "2001"
+        }
+      ],
+      "expense_entries": [
+        {
+          "connectwise_entry_id": "ee-fp-001",
+          "day": 12,
+          "amount": "200.00",
+          "description": "Software license",
+          "agreement_name": "Managed Services"
+        }
+      ],
+      "product_entries": [
+        {
+          "connectwise_entry_id": "pe-fp-001",
+          "day": 15,
+          "amount": "100.00",
+          "description": "Router",
+          "agreement_name": "Managed Services"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "work_roles": [
+    {"role_name": "Engineer", "burden_rate": "100.00"}
+  ],
+  "clients": [
+    {
+      "connectwise_id": "cw-hourly-leakage",
+      "connectwise_company_name": "Hourly Leakage Co",
+      "qbo_customer_id": "qbo-hourly-leakage",
+      "qbo_customer_name": "Hourly Leakage Co",
+      "billing_model": "hourly",
+      "flat_fee_amount": null,
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-hl-001",
+          "day": 5,
+          "technician": "Alice",
+          "hours": "12.00",
+          "billable_rate": "150.00",
+          "work_role": "Engineer",
+          "is_billable": true,
+          "agreement_name": "T&M Agreement",
+          "ticket_number": "1001"
+        },
+        {
+          "connectwise_entry_id": "te-hl-002",
+          "day": 17,
+          "technician": "Bob",
+          "hours": "8.00",
+          "billable_rate": "150.00",
+          "work_role": "Engineer",
+          "is_billable": true,
+          "agreement_name": "T&M Agreement",
+          "ticket_number": "1002"
+        }
+      ],
+      "expense_entries": [
+        {
+          "connectwise_entry_id": "ee-hl-001",
+          "day": 10,
+          "amount": "200.00",
+          "description": "Travel",
+          "agreement_name": "T&M Agreement"
+        }
+      ],
+      "product_entries": []
+    }
+  ]
+}

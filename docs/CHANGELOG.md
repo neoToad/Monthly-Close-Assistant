@@ -3,6 +3,26 @@
 All notable changes to the Monthly Close Assistant are recorded here, one entry per
 commit, per the AGENTS.md workflow.
 
+## feat(engines): connectwise step 3 — synthetic connectwise feed generator
+
+- Added six scenario fixtures under `core/fixtures/connectwise_scenarios/`:
+  `hourly_leakage`, `flat_fee_profitable`, `flat_fee_margin_erosion`,
+  `flat_fee_loss`, `missing_mapping`, and `mixed`.
+- Implemented `core/engines/connectwise_feed.py::generate_connectwise_feed` to load a
+  fixture and create `ConnectWiseCompany`, `QBCustomer`, `ClientMapping`,
+  `ConnectWiseWorkRole`, `TimeEntry`, `ExpenseEntry`, and `ProductEntry` rows for a
+  target month/realm.
+- Generator is idempotent on `(company, connectwise_entry_id)`, supports `--force` to
+  overwrite existing month activity, and accepts an optional `--seed` for reproducibility.
+- Added `core/management/commands/generate_connectwise_feed.py` mirroring the existing
+  bank-feed command interface.
+- Added `core/tests/test_connectwise_feed.py` with 9 tests covering scenario row counts,
+  flat-fee mapping creation, missing-mapping scenarios, mixed scenarios, force overwrite,
+  idempotency, seed reproducibility, and command output.
+- Exported `generate_connectwise_feed` from `core/engines/__init__.py`.
+- Full core test suite passes **339 tests**; `makemigrations --check --dry-run` reports
+  no changes.
+
 ## feat(quickbooks): connectwise step 2 — sync QBO customers and invoices
 
 - Added `sync_customers` and `sync_invoices` helpers in `core/quickbooks/client.py`

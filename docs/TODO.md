@@ -35,7 +35,7 @@
 
 - Complete: Step 1 — add QBO customer/invoice and ConnectWise activity models.
 - Complete: Step 2 — sync QBO customers and invoices.
-- Next: Step 3 — synthetic ConnectWise feed generator with scenarios.
+- Complete: Step 3 — synthetic ConnectWise feed generator with scenarios.
 - Next: Step 4 — ConnectWise-to-QBO reconciliation engine.
 - Next: Step 5 — `run_connectwise_reconciliation` management command.
 - Next: Step 6 — dashboard Client Reconciliation (ConnectWise) section.

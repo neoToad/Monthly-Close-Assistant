@@ -1,0 +1,103 @@
+{
+  "work_roles": [
+    {"role_name": "Engineer", "burden_rate": "100.00"}
+  ],
+  "clients": [
+    {
+      "connectwise_id": "cw-mixed-hourly",
+      "connectwise_company_name": "Mixed Hourly Co",
+      "qbo_customer_id": "qbo-mixed-hourly",
+      "qbo_customer_name": "Mixed Hourly Co",
+      "billing_model": "hourly",
+      "flat_fee_amount": null,
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-mh-001",
+          "day": 2,
+          "technician": "Grace",
+          "hours": "7.00",
+          "billable_rate": "150.00",
+          "work_role": "Engineer",
+          "is_billable": true,
+          "agreement_name": "T&M Agreement",
+          "ticket_number": "6001"
+        }
+      ],
+      "expense_entries": [
+        {
+          "connectwise_entry_id": "ee-mh-001",
+          "day": 20,
+          "amount": "120.00",
+          "description": "Mileage",
+          "agreement_name": "T&M Agreement"
+        }
+      ],
+      "product_entries": []
+    },
+    {
+      "connectwise_id": "cw-mixed-flat",
+      "connectwise_company_name": "Mixed Flat Co",
+      "qbo_customer_id": "qbo-mixed-flat",
+      "qbo_customer_name": "Mixed Flat Co",
+      "billing_model": "flat_fee",
+      "flat_fee_amount": "3000.00",
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-mf-001",
+          "day": 11,
+          "technician": "Heidi",
+          "hours": "20.00",
+          "billable_rate": "0.00",
+          "work_role": "Engineer",
+          "is_billable": false,
+          "agreement_name": "Managed Services",
+          "ticket_number": "6002"
+        }
+      ],
+      "expense_entries": [
+        {
+          "connectwise_entry_id": "ee-mf-001",
+          "day": 19,
+          "amount": "250.00",
+          "description": "Backup drive",
+          "agreement_name": "Managed Services"
+        }
+      ],
+      "product_entries": [
+        {
+          "connectwise_entry_id": "pe-mf-001",
+          "day": 28,
+          "amount": "180.00",
+          "description": "AP",
+          "agreement_name": "Managed Services"
+        }
+      ]
+    },
+    {
+      "connectwise_id": "cw-mixed-unmapped",
+      "connectwise_company_name": "Mixed Unmapped Co",
+      "qbo_customer_id": null,
+      "qbo_customer_name": null,
+      "billing_model": "hourly",
+      "flat_fee_amount": null,
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-mu-001",
+          "day": 9,
+          "technician": "Ivan",
+          "hours": "3.00",
+          "billable_rate": "150.00",
+          "work_role": "Engineer",
+          "is_billable": true,
+          "agreement_name": "T&M Agreement",
+          "ticket_number": "6003"
+        }
+      ],
+      "expense_entries": [],
+      "product_entries": []
+    }
+  ]
+}

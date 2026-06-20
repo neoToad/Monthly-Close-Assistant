@@ -1,0 +1,47 @@
+{
+  "work_roles": [
+    {"role_name": "Engineer", "burden_rate": "100.00"}
+  ],
+  "clients": [
+    {
+      "connectwise_id": "cw-flat-erosion",
+      "connectwise_company_name": "Flat Erosion Co",
+      "qbo_customer_id": "qbo-flat-erosion",
+      "qbo_customer_name": "Flat Erosion Co",
+      "billing_model": "flat_fee",
+      "flat_fee_amount": "5000.00",
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-fe-001",
+          "day": 3,
+          "technician": "Dave",
+          "hours": "40.00",
+          "billable_rate": "0.00",
+          "work_role": "Engineer",
+          "is_billable": false,
+          "agreement_name": "Managed Services",
+          "ticket_number": "3001"
+        }
+      ],
+      "expense_entries": [
+        {
+          "connectwise_entry_id": "ee-fe-001",
+          "day": 14,
+          "amount": "500.00",
+          "description": "Parts",
+          "agreement_name": "Managed Services"
+        }
+      ],
+      "product_entries": [
+        {
+          "connectwise_entry_id": "pe-fe-001",
+          "day": 22,
+          "amount": "300.00",
+          "description": "Switch",
+          "agreement_name": "Managed Services"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "work_roles": [
+    {"role_name": "Engineer", "burden_rate": "100.00"}
+  ],
+  "clients": [
+    {
+      "connectwise_id": "cw-flat-loss",
+      "connectwise_company_name": "Flat Loss Co",
+      "qbo_customer_id": "qbo-flat-loss",
+      "qbo_customer_name": "Flat Loss Co",
+      "billing_model": "flat_fee",
+      "flat_fee_amount": "5000.00",
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-fl-001",
+          "day": 4,
+          "technician": "Eve",
+          "hours": "55.00",
+          "billable_rate": "0.00",
+          "work_role": "Engineer",
+          "is_billable": false,
+          "agreement_name": "Managed Services",
+          "ticket_number": "4001"
+        }
+      ],
+      "expense_entries": [
+        {
+          "connectwise_entry_id": "ee-fl-001",
+          "day": 18,
+          "amount": "800.00",
+          "description": "Emergency parts",
+          "agreement_name": "Managed Services"
+        }
+      ],
+      "product_entries": [
+        {
+          "connectwise_entry_id": "pe-fl-001",
+          "day": 25,
+          "amount": "500.00",
+          "description": "Firewall",
+          "agreement_name": "Managed Services"
+        }
+      ]
+    }
+  ]
+}

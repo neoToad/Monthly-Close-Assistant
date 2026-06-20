@@ -1,16 +1,15 @@
 # Current Task
 
-ConnectWise Step 2 — QBO customer/invoice sync
+ConnectWise Step 3 — Synthetic ConnectWise feed
 
 Actively working on:
-- Added `sync_customers` and `sync_invoices` helpers to `core/quickbooks/client.py`.
-- Wired the helpers into the `sync_quickbooks` management command.
-- Added `--skip-customers` and `--skip-invoices` flags.
-- Added `core/tests/test_qbo_invoice_sync.py` with mocked SDK tests.
-- Updated existing sync command tests to patch the new helpers.
+- Create JSON fixtures under `core/fixtures/connectwise_scenarios/` for hourly leakage, flat-fee profitable, flat-fee margin erosion, flat-fee loss, missing mapping, and mixed scenarios.
+- Implement `core/engines/connectwise_feed.py::generate_connectwise_feed(month, realm_id, scenario, force=False, seed=None)`.
+- Add `core/management/commands/generate_connectwise_feed.py`.
+- Write failing tests first in `core/tests/test_connectwise_feed.py`.
 
 Blockers or decisions:
 - None.
 
 Next step:
-- After commit and push, move to Step 3 (synthetic ConnectWise feed).
+- Write failing tests, then implement fixtures and the generator.

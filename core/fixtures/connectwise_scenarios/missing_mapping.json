@@ -1,0 +1,31 @@
+{
+  "work_roles": [
+    {"role_name": "Engineer", "burden_rate": "100.00"}
+  ],
+  "clients": [
+    {
+      "connectwise_id": "cw-missing",
+      "connectwise_company_name": "Missing Mapping Co",
+      "qbo_customer_id": null,
+      "qbo_customer_name": null,
+      "billing_model": "hourly",
+      "flat_fee_amount": null,
+      "default_burden_rate": null,
+      "time_entries": [
+        {
+          "connectwise_entry_id": "te-mm-001",
+          "day": 6,
+          "technician": "Frank",
+          "hours": "6.00",
+          "billable_rate": "150.00",
+          "work_role": "Engineer",
+          "is_billable": true,
+          "agreement_name": "T&M Agreement",
+          "ticket_number": "5001"
+        }
+      ],
+      "expense_entries": [],
+      "product_entries": []
+    }
+  ]
+}
