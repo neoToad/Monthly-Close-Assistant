@@ -7,6 +7,29 @@ Archived changelogs live in `docs/changelogs/`.
 
 ## 2026-06-20
 
+### Step 7 — `feat(demo): add seed_demo_msp_data command with realistic MSP fixture`
+- Added `core/fixtures/msp_demo_data.py` with chart of accounts, customers, vendors,
+  deposits, bills, purchases, journal entries, bill payments, and vendor credits for
+  the fictional **Next Level Networks Demo** MSP.
+- Added `core/management/commands/seed_demo_msp_data.py`:
+  - Accepts `month` in `YYYY-MM`, optional `--realm-id` (default `demo-msp`),
+    `--force`, `--include-bank-feed`, and `--seed`.
+  - Creates the `QuickBooksCompany` and 12 `QBAccount` rows idempotently.
+  - Seeds 20 signed `Transaction` rows so the balance-reconciliation check raises a
+    flag against the seeded `$42,315.50` bank statement balance.
+  - Supports date jitter via `--seed` while keeping amounts deterministic for stable
+    assertions.
+  - With `--include-bank-feed`, calls `generate_bank_feed` so `run_reconciliation`
+    immediately produces reconciliation flags.
+- Added `core/tests/test_seed_demo_msp_data.py` with 14 tests covering idempotency,
+  force re-seed, transaction counts, bank statement balance, bank-feed integration,
+  balance-reconciliation flags, and new-vendor anomaly flags.
+- Updated `docs/TODO.md`, `docs/CURRENT_TASK.md`, and this changelog.
+- Verification: `makemigrations --check --dry-run` reports no changes;
+  full test suite passes **375 tests**.
+
+## 2026-06-20
+
 ### Step 1 — `feat(models): add BankTransaction.source field and synthetic source tracking`
 - Added `BankTransactionSource` choices (`synthetic`, `csv_import`, `bank_feed_api`, `manual`).
 - Added `source` column to `BankTransaction` with `manual` default.

@@ -1,29 +1,19 @@
 # Current Task
 
-No active bank-feed task — scope revised and committed.
+Implement `docs/plans/seed_demo_msp_data_plan.md` — add a management command that seeds the local database with realistic MSP demo data for dashboard and reconciliation demos.
 
-Status:
-- CSV bank importer removed from the bank-feed independence implementation.
-- `BankTransaction.source`, synthetic generator relabeling, and independent
-  simulator scenarios remain in place on `feature/close-assistant-build`.
-- Commit `9bb33c5` records the removal.
-- Final verification:
-  - `docker compose exec web python manage.py makemigrations --check --dry-run` — no changes.
-  - `docker compose exec web python manage.py test -v 2` — **361 tests pass**.
+**Status:** Complete — awaiting final review / commit
 
-Kept deliverables:
-- `BankTransaction.source` field with `BankTransactionSource` choices; synthetic
-  generator marks rows as `synthetic`.
-- Independent simulator scenario fixture, `--scenario` / `--scenario-file` support
-  in `generate_bank_feed`, and command/view tests.
-- Dashboard button relabeled "Generate Synthetic Bank Feed" with testing-only subtitle.
+**What was built:**
+- Added `core/fixtures/msp_demo_data.py` with the chart of accounts, customers, vendors, and transaction fixtures for **Next Level Networks Demo**.
+- Added `core/management/commands/seed_demo_msp_data.py` supporting `YYYY-MM`, `--realm-id` (default `demo-msp`), `--force`, `--include-bank-feed`, and `--seed`.
+- Added `core/tests/test_seed_demo_msp_data.py` with 14 tests covering company/account creation, transaction counts, bank statement balance, idempotency, force re-seed, bank-feed integration, balance-reconciliation flags, and new-vendor anomaly flags.
+- Updated `docs/TODO.md`, `docs/CHANGELOG.md`, and this file.
 
-Removed deliverables:
-- `core/engines/bank_feed_import.py` and `import_bank_feed_from_csv` export.
-- `core/management/commands/import_bank_feed.py`.
-- `core/tests/test_bank_feed_import.py` and all CSV-import view/command tests.
-- `import_bank_feed_view`, `POST /dashboard/bank-feed/import/`, and dashboard
-  CSV upload form.
+**Verification:**
+- `docker compose exec web python manage.py test core.tests.test_seed_demo_msp_data -v 2` — 14 tests pass.
+- `docker compose exec web python manage.py test -v 2` — **375 tests pass**.
+- `docker compose exec web python manage.py makemigrations --check --dry-run` — no changes.
 
-Next work:
-- Pick the next TODO item or plan; no further bank-feed independence work in scope.
+**Next step:**
+- Commit the changes with the planned commit message.
