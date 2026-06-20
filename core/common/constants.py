@@ -43,6 +43,23 @@ DEFAULT_EXPENSE_ACCOUNT = "Uncategorized Expense"
 DEFAULT_INCOME_ACCOUNT = "Miscellaneous Income"
 DEFAULT_BANK_FEES_ACCOUNT = "Bank Fees"
 
+# --- ConnectWise reconciliation thresholds -------------------------------------
+
+#: Dollar leakage threshold for hourly/retainer clients before a flag is raised.
+CONNECTWISE_UNBILLED_THRESHOLD = Decimal("100.00")
+
+#: Target margin for flat-fee clients (revenue - cost) / revenue.
+CONNECTWISE_TARGET_MARGIN = Decimal("0.35")
+
+#: Warning margin threshold for flat-fee clients.
+CONNECTWISE_MARGIN_WARN = Decimal("0.20")
+
+#: Critical margin threshold for flat-fee clients (0% or negative).
+CONNECTWISE_MARGIN_CRITICAL = Decimal("0.00")
+
+#: Default fully-loaded hourly cost when no role-specific or client-specific rate exists.
+CONNECTWISE_DEFAULT_BURDEN_RATE = Decimal("100.00")
+
 # --- Synthetic bank feed parameters --------------------------------------------
 
 #: Small amount deltas used to simulate fees, rounding, or FX differences.

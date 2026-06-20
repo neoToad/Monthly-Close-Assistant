@@ -9,6 +9,7 @@ from __future__ import annotations
 from core.engines.anomaly import run_anomaly_detection
 from core.engines.bank_feed import generate_bank_feed
 from core.engines.connectwise_feed import generate_connectwise_feed
+from core.engines.connectwise_reconciliation import run_connectwise_reconciliation
 from core.engines.reconciliation import (
     check_account_balances,
     compute_posted_total,
@@ -21,5 +22,6 @@ __all__ = [
     "generate_bank_feed",
     "generate_connectwise_feed",
     "run_anomaly_detection",
+    "run_connectwise_reconciliation",
     "run_reconciliation",
 ]

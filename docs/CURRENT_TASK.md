@@ -1,14 +1,14 @@
 # Current Task
 
-Step 3 — Synthetic ConnectWise feed — COMPLETE and verified.
+Step 4 — ConnectWise reconciliation engine — IN PROGRESS.
 
 Status:
-- All six JSON fixtures created under `core/fixtures/connectwise_scenarios/`.
-- `core/engines/connectwise_feed.py::generate_connectwise_feed` implemented with idempotent upserts, `--force`, and `--seed` support.
-- `core/management/commands/generate_connectwise_feed.py` added.
-- `core/tests/test_connectwise_feed.py` covers scenario counts, flat-fee mappings, missing mappings, mixed scenarios, force/idempotency, and seed reproducibility (9 tests passing).
+- Step 1 (models), Step 2 (QBO sync), and Step 3 (synthetic feed) are complete and verified.
+- Now implementing `core/engines/connectwise_reconciliation.py::run_connectwise_reconciliation(month, realm_id=None)`.
+- Goal: per `(company, connectwise_company)` in the target month, flag `CONNECTWISE_UNBILLED`, `CONNECTWISE_MARGIN`, and `CONNECTWISE_MISSING_MAPPING` as defined in the plan.
+- Existing tests in `core/tests/test_connectwise_reconciliation.py` should drive the implementation (TDD).
 
-Paused as requested; not starting Step 4.
-
-Next step when work resumes:
-- Step 4 — ConnectWise reconciliation engine: implement `core/engines/connectwise_reconciliation.py::run_connectwise_reconciliation(month, realm_id=None)` with unbilled, margin, and missing-mapping flags, plus tests in `core/tests/test_connectwise_reconciliation.py`.
+Next:
+- Confirm the existing tests fail for the expected reason (missing engine).
+- Write the minimum engine code to make tests pass.
+- Proceed to Step 5 (management command), Step 6 (dashboard section), and Step 7 (docs/verification).
