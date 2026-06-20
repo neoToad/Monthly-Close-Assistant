@@ -1,19 +1,20 @@
 # Current Task
 
-Implement `docs/plans/seed_demo_msp_data_plan.md` — add a management command that seeds the local database with realistic MSP demo data for dashboard and reconciliation demos.
+Fix the dashboard flag filter so `BALANCE_RECONCILIATION` and `CONNECTWISE_*` flags show up in the **Open Flags** list, then clean up the `demo-msp` seed data I left in the local database.
 
-**Status:** Complete and committed (`025c6d6`)
+**Status:** Code fix complete and tested; cleanup pending user confirmation
 
 **What was built:**
-- Added `core/fixtures/msp_demo_data.py` with the chart of accounts, customers, vendors, and transaction fixtures for **Next Level Networks Demo**.
-- Added `core/management/commands/seed_demo_msp_data.py` supporting `YYYY-MM`, `--realm-id` (default `demo-msp`), `--force`, `--include-bank-feed`, and `--seed`.
-- Added `core/tests/test_seed_demo_msp_data.py` with 14 tests covering company/account creation, transaction counts, bank statement balance, idempotency, force re-seed, bank-feed integration, balance-reconciliation flags, and new-vendor anomaly flags.
-- Updated `docs/TODO.md`, `docs/CHANGELOG.md`, and this file.
+- Updated `core/views.py::_dashboard_context` to include flags whose linked transaction or bank row is `NULL`.
+- Added tests in `core/tests/test_views.py` covering balance-reconciliation and ConnectWise flag visibility.
 
 **Verification:**
-- `docker compose exec web python manage.py test core.tests.test_seed_demo_msp_data -v 2` — 14 tests pass.
-- `docker compose exec web python manage.py test -v 2` — **375 tests pass**.
+- `docker compose exec web python manage.py test core.tests.test_views -v 2` — 37 tests pass.
+- `docker compose exec web python manage.py test -v 2` — **377 tests pass**.
 - `docker compose exec web python manage.py makemigrations --check --dry-run` — no changes.
 
+**Cleanup:**
+- I have not yet removed the `demo-msp` rows I wrote to your local database while investigating. Say "clean it up" and I will delete them.
+
 **Next step:**
-- Pick the next TODO item or plan.
+- Commit the filter fix and tests.

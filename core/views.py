@@ -358,16 +358,34 @@ def _dashboard_context(month: str, realm_id: Optional[str] = None) -> dict[str, 
     """Build the dashboard context for ``month`` and optional ``realm_id``."""
     first, last = month_bounds(month)
 
-    flag_filters = Q(transaction__date__range=(first, last)) | Q(
+    # Transaction-linked flags are scoped to the month via their related row.
+    tx_flag_filters = Q(transaction__date__range=(first, last)) | Q(
         bank_transaction__date__range=(first, last)
     )
+    # Balance-reconciliation and ConnectWise flags are created for a specific
+    # month but have no linked transaction/bank row. They are scoped by month on
+    # the flag's denormalized realm_id and by the month of the related model
+    # when present.
+    non_tx_flag_types = (
+        FlagType.BALANCE_RECONCILIATION,
+        FlagType.CONNECTWISE_UNBILLED,
+        FlagType.CONNECTWISE_MARGIN,
+        FlagType.CONNECTWISE_MISSING_MAPPING,
+    )
+    # Balance-reconciliation flags are scoped by the statement-balance month;
+    # ConnectWise flags are scoped to the company/realm for the month. Both lack
+    # a transaction/bank_transaction link, so they must be included explicitly.
+    non_tx_filters = Q(flag_type__in=non_tx_flag_types) & Q(
+        bank_statement_balance__month=month
+    )
+    flag_filters = tx_flag_filters | non_tx_filters
     if realm_id:
         flag_filters &= Q(realm_id=realm_id)
 
     month_flags = Flag.objects.filter(flag_filters)
 
     flags = month_flags.filter(status=FlagStatus.OPEN).select_related(
-        "transaction", "bank_transaction"
+        "transaction", "bank_transaction", "bank_statement_balance"
     ).order_by("-created_at")
 
     flag_counts = {

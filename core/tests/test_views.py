@@ -609,6 +609,59 @@ class DashboardActionViewTests(TestCase):
         )
         self.assertEqual(second.ending_balance, Decimal("-3621.93"))
 
+    def test_balance_reconciliation_flag_appears_in_open_flags(self) -> None:
+        """Dashboard must show BALANCE_RECONCILIATION flags that have no linked tx."""
+        from core.engines.reconciliation import check_account_balances
+        from core.models import BankStatementBalance, QBAccount, Transaction, SourceType
+
+        company = _company("realm-a")
+        QBAccount.objects.create(
+            company=company,
+            realm_id="realm-a",
+            account_id="qb-acc-1",
+            name="Operating Checking",
+            account_type="Bank",
+        )
+        Transaction.objects.create(
+            company=company,
+            date=dt.date(2026, 6, 15),
+            vendor="Acme",
+            amount=Decimal("100.00"),
+            gl_account="Operating Checking",
+            qb_transaction_id="QB-1",
+            source_type=SourceType.PURCHASE,
+            realm_id="realm-a",
+        )
+        BankStatementBalance.objects.create(
+            company=company,
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            account_name="Operating Checking",
+            month="2026-06",
+            ending_balance=Decimal("1000.00"),
+        )
+        check_account_balances("2026-06", realm_id="realm-a")
+
+        resp = self.client.get("/dashboard/?company=realm-a&month=2026-06")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Operating Checking")
+        self.assertContains(resp, "does not match posted GL total")
+        self.assertContains(resp, "Open Flags")
+
+    def test_connectwise_flags_appear_in_open_flags(self) -> None:
+        """Dashboard must show ConnectWise flags that have no linked tx/bank row."""
+        from core.engines import generate_connectwise_feed
+
+        generate_connectwise_feed(
+            month="2025-01", realm_id="realm-a", scenario="missing_mapping"
+        )
+        resp = self.client.post(
+            "/dashboard/connectwise/reconcile/",
+            {"month": "2025-01", "realm_id": "realm-a"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "no mapping to a QuickBooks Online customer")
+
 
 class ReconcileAccountViewTests(TestCase):
     def setUp(self) -> None:
