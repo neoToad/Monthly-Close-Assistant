@@ -1,7 +1,7 @@
 """QuickBooks adjusting-entry write helpers.
 
 These helpers build python-quickbooks objects (JournalEntry, Purchase, Deposit)
-from the suggestion structures produced by ``core.agent.reconcile``. They live in
+from the suggestion structures produced by ``core.agents.account_reconcile``. They live in
 ``core.services`` rather than ``core.quickbooks`` so the agent layer can remain a
 read-only suggestion engine and never import write logic directly.
 """
@@ -210,7 +210,7 @@ def apply_suggestion(
 ) -> dict[str, Any]:
     """Apply a single suggestion by dispatching to the correct QB write helper.
 
-    ``suggestion`` is the dict produced by ``core.agent.reconcile`` and must contain
+    ``suggestion`` is the dict produced by ``core.agents.account_reconcile`` and must contain
     ``type`` (journal_entry/purchase/deposit), ``date``, ``account_id``, and ``lines``.
     Each line's ``account_name`` must resolve to an active ``QBAccount`` for the realm.
     """

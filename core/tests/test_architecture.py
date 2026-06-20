@@ -31,23 +31,23 @@ class AgentLayerBoundaryTests(TestCase):
         return forbidden
 
     def test_agent_reconcile_does_not_import_qb_writes_or_client(self) -> None:
-        module = sys.modules.get("core.agent.reconcile")
+        module = sys.modules.get("core.agents.account_reconcile")
         if module is None:
-            module = importlib.import_module("core.agent.reconcile")
+            module = importlib.import_module("core.agents.account_reconcile")
         forbidden = self._forbidden_references(module)
         self.assertEqual(
             forbidden,
             [],
-            f"core.agent.reconcile contains forbidden QB write/client references: {forbidden}",
+            f"core.agents.account_reconcile contains forbidden QB write/client references: {forbidden}",
         )
 
     def test_agent_summary_does_not_import_qb_writes_or_client(self) -> None:
-        module = sys.modules.get("core.agent.summary")
+        module = sys.modules.get("core.agents.close_summary")
         if module is None:
-            module = importlib.import_module("core.agent.summary")
+            module = importlib.import_module("core.agents.close_summary")
         forbidden = self._forbidden_references(module)
         self.assertEqual(
             forbidden,
             [],
-            f"core.agent.summary contains forbidden QB write/client references: {forbidden}",
+            f"core.agents.close_summary contains forbidden QB write/client references: {forbidden}",
         )

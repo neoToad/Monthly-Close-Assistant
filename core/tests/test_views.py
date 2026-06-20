@@ -97,6 +97,49 @@ class OAuthCallbackViewTests(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_callback_reports_oauth_configuration_error(self) -> None:
+        state = "the-state"
+        client = self._session_with_state(Client(), state)
+
+        with mock.patch.object(
+            qb_client, "make_auth_client", side_effect=ValueError("missing client id")
+        ), self.assertLogs("core.views", level="ERROR") as logs:
+            resp = client.get(
+                "/quickbooks/oauth/callback/",
+                {"code": "the-code", "realmId": "123145", "state": state},
+            )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertContains(
+            resp, "QuickBooks OAuth is not configured.", status_code=400
+        )
+        self.assertIn("realm_id=123145", "\n".join(logs.output))
+        self.assertIn("state_valid=True", "\n".join(logs.output))
+
+    def test_callback_logs_token_exchange_failure_with_context(self) -> None:
+        state = "the-state"
+        client = self._session_with_state(Client(), state)
+
+        with mock.patch.object(qb_client, "make_auth_client") as mock_make, \
+             mock.patch.object(
+                 qb_client,
+                 "exchange_code_for_tokens",
+                 side_effect=RuntimeError("intuit unavailable"),
+             ), self.assertLogs("core.views", level="ERROR") as logs:
+            mock_make.return_value = mock.MagicMock()
+            resp = client.get(
+                "/quickbooks/oauth/callback/",
+                {"code": "the-code", "realmId": "123145", "state": state},
+            )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertContains(
+            resp, "QuickBooks token exchange failed.", status_code=400
+        )
+        output = "\n".join(logs.output)
+        self.assertIn("realm_id=123145", output)
+        self.assertIn("state_valid=True", output)
+
     def test_callback_stores_quickbooks_company_name(self) -> None:
         from core.models import QuickBooksCompany
 
@@ -492,9 +535,20 @@ class DashboardActionViewTests(TestCase):
     def test_draft_summary_creates_summary(self) -> None:
         from core.models import CloseSummary
 
-        resp = self.client.post(
-            "/dashboard/summary/draft/", {"month": "2025-01", "realm_id": "realm-a"}
+        company = _company("realm-a")
+        summary = CloseSummary.objects.create(
+            company=company,
+            realm_id="realm-a",
+            month="2025-01",
+            summary_text="Drafted summary.",
         )
+        with mock.patch(
+            "core.views.orchestrate_close_summary",
+            return_value=summary,
+        ):
+            resp = self.client.post(
+                "/dashboard/summary/draft/", {"month": "2025-01", "realm_id": "realm-a"}
+            )
 
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Close summary drafted")

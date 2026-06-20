@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
+from typing import Optional
 
 from django.core.validators import RegexValidator
 from django.db import models

@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.anomaly.rules import run_anomaly_detection
+from core.engines import run_anomaly_detection, run_reconciliation
 from core.quickbooks import tokens as qb_tokens
-from core.reconciliation.engine import run_reconciliation
 
 
 class Command(BaseCommand):

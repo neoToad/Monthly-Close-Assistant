@@ -23,7 +23,7 @@ from core.common.constants import (
     DEFAULT_INCOME_ACCOUNT,
 )
 from core.common.dates import month_bounds, prior_month
-from core.services.retry import with_retry
+from core.engines.reconciliation import compute_posted_total
 from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
@@ -32,7 +32,7 @@ from core.models import (
     ReconciliationStatus,
     Transaction,
 )
-from core.reconciliation.engine import compute_posted_total
+from core.services.retry import with_retry
 
 logger = logging.getLogger(__name__)
 

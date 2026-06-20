@@ -37,3 +37,16 @@ class SyncQuickbooksTaskTests(TestCase):
             sync_quickbooks_task.delay()
 
         mock_call.assert_called_once_with("sync_quickbooks")
+
+    def test_task_logs_command_failure_with_task_context(self) -> None:
+        from core.tasks import sync_quickbooks_task
+
+        with mock.patch(
+            "core.tasks.call_command", side_effect=RuntimeError("sync failed")
+        ), self.assertLogs("core.tasks", level="ERROR") as logs:
+            with self.assertRaises(RuntimeError):
+                sync_quickbooks_task.apply(throw=True)
+
+        output = "\n".join(logs.output)
+        self.assertIn("sync_quickbooks_task failed", output)
+        self.assertIn("task_id=", output)

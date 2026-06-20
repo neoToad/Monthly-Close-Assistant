@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.bank_feed import generate_bank_feed
+from core.engines import generate_bank_feed
 from core.quickbooks import tokens as qb_tokens
 
 

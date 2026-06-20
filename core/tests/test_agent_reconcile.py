@@ -85,7 +85,7 @@ class GatherInputsTests(TestCase):
         _bank_balance()
         _txn()
 
-        from core.agent.reconcile import gather_account_inputs
+        from core.agents.account_reconcile import gather_account_inputs
 
         inputs = gather_account_inputs("2026-06", "realm-a", "qb-acc-1")
         self.assertEqual(inputs["posted_total"], Decimal("568.38"))
@@ -98,7 +98,7 @@ class GatherInputsTests(TestCase):
         _txn()
         _bank_txn()
 
-        from core.agent.reconcile import gather_account_inputs
+        from core.agents.account_reconcile import gather_account_inputs
 
         inputs = gather_account_inputs("2026-06", "realm-a", "qb-acc-1")
         self.assertEqual(len(inputs["unmatched_bank"]), 1)
@@ -111,7 +111,7 @@ class DeterministicSuggestionTests(TestCase):
         _bank_balance(ending_balance=Decimal("100.00"))
         _txn(amount=Decimal("53.55"))
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         result = suggest_account_fixes("2026-06", "realm-a", "qb-acc-1")
         suggestions = result["suggestions"]
@@ -130,7 +130,7 @@ class DeterministicSuggestionTests(TestCase):
         _txn(amount=Decimal("0.00"))
         _bank_txn(amount=Decimal("3000.00"), vendor="ACH Transfer")
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         result = suggest_account_fixes("2026-06", "realm-a", "qb-acc-1")
         suggestions = [s for s in result["suggestions"] if s["type"] == "purchase"]
@@ -144,7 +144,7 @@ class DeterministicSuggestionTests(TestCase):
         _txn(amount=Decimal("0.00"))
         _bank_txn(amount=Decimal("-500.00"), vendor="Interest Income")
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         result = suggest_account_fixes("2026-06", "realm-a", "qb-acc-1")
         suggestions = [s for s in result["suggestions"] if s["type"] == "deposit"]
@@ -165,7 +165,7 @@ class DeterministicSuggestionTests(TestCase):
             matched_transaction_id=txn,
         )
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         result = suggest_account_fixes("2026-06", "realm-a", "qb-acc-1")
         # There is no residual because statement_balance == posted_total, and the
@@ -179,7 +179,7 @@ class LLMSuggestionTests(TestCase):
         _bank_balance()
         _txn()
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         fake_llm = mock.MagicMock()
         fake_llm.invoke.return_value = mock.MagicMock(content='{"suggestions": [{"id": "sug-1", "type": "journal_entry", "description": "Test", "amount": "53.55", "date": "2026-06-30", "confidence": "high", "lines": [{"account_name": "Bank Fees", "amount": "53.55", "posting": "Debit"}, {"account_name": "Operating Checking", "amount": "-53.55", "posting": "Credit"}]}]}')
@@ -193,7 +193,7 @@ class LLMSuggestionTests(TestCase):
         _bank_balance(ending_balance=Decimal("100.00"))
         _txn(amount=Decimal("53.55"))
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         fake_llm = mock.MagicMock()
         fake_llm.invoke.return_value = mock.MagicMock(content="not json")
@@ -207,7 +207,7 @@ class StatePersistenceTests(TestCase):
         _bank_balance(ending_balance=Decimal("100.00"))
         _txn(amount=Decimal("53.55"))
 
-        from core.agent.reconcile import suggest_account_fixes
+        from core.agents.account_reconcile import suggest_account_fixes
 
         suggest_account_fixes("2026-06", "realm-a", "qb-acc-1")
         state = AccountReconciliationState.objects.get(

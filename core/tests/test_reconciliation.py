@@ -16,7 +16,7 @@ from core.models import (
     SourceType,
     Transaction,
 )
-from core.reconciliation.engine import check_account_balances, compute_posted_total, run_reconciliation
+from core.engines.reconciliation import check_account_balances, compute_posted_total, run_reconciliation
 
 
 _make_txn_counter = 0

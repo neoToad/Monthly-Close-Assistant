@@ -27,12 +27,10 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
-from core.agent import reconcile as reconcile_agent
-from core.agent.summary import draft_close_summary
-from core.anomaly.rules import run_anomaly_detection
-from core.bank_feed import generate_bank_feed
+from core.agents import account_reconcile as reconcile_agent
 from core.common.constants import BALANCE_TOLERANCE, CASH_LIKE_ACCOUNT_TYPES
 from core.common.dates import month_bounds
+from core.engines import generate_bank_feed, run_anomaly_detection, run_reconciliation
 from core.models import (
     BankStatementBalance,
     CloseSummary,
@@ -43,9 +41,10 @@ from core.models import (
     QuickBooksCompany,
     Transaction,
 )
+from core.engines.reconciliation import compute_posted_total
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.reconciliation.engine import compute_posted_total, run_reconciliation
+from core.services.close_summary import orchestrate_close_summary
 from core.services.reconciliation import apply_account_reconciliation_suggestions
 
 logger = logging.getLogger(__name__)
@@ -196,11 +195,24 @@ def qb_oauth_callback(request) -> HttpResponse:
     if not state or not expected_state or state != expected_state:
         return HttpResponseBadRequest("Invalid OAuth state.")
 
+    state_valid = True
     try:
         auth_client = qb_client.make_auth_client(realm_id=realm_id)
         exchanged = qb_client.exchange_code_for_tokens(auth_client, code, realm_id)
         token = qb_tokens.store_tokens(exchanged, realm_id=realm_id)
+    except ValueError:
+        logger.exception(
+            "QuickBooks OAuth configuration failed realm_id=%s state_valid=%s",
+            realm_id,
+            state_valid,
+        )
+        return HttpResponseBadRequest("QuickBooks OAuth is not configured.")
     except Exception:  # noqa: BLE001 — surface any exchange/storage failure to the user
+        logger.exception(
+            "QuickBooks token exchange failed realm_id=%s state_valid=%s",
+            realm_id,
+            state_valid,
+        )
         return HttpResponseBadRequest("QuickBooks token exchange failed.")
 
     # Best-effort fetch of the company display name; never block the OAuth redirect.
@@ -444,7 +456,9 @@ def draft_summary(request) -> HttpResponse:
         return HttpResponseBadRequest("Invalid month. Use YYYY-MM.")
 
     try:
-        summary = draft_close_summary(month, realm_id=realm_id or "")
+        summary = orchestrate_close_summary(
+            month, realm_id=realm_id or "", fetch_qb_gl_totals=True
+        )
     except Exception as exc:  # noqa: BLE001
         return _render_dashboard(
             request,

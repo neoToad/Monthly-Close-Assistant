@@ -10,8 +10,9 @@ import logging
 from decimal import Decimal
 from typing import Any, Optional
 
-from core.agent import reconcile as reconcile_agent
+from core.agents import account_reconcile as reconcile_agent
 from core.common.constants import BALANCE_TOLERANCE
+from core.engines import run_reconciliation
 from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
@@ -23,7 +24,6 @@ from core.models import (
 )
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.reconciliation.engine import run_reconciliation
 from core.services import qb_writes
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,36 @@ logger = logging.getLogger(__name__)
 
 def _private_note(month: str, description: str) -> str:
     return f"AI-assisted reconciliation for {month} — {description}"
+
+
+def _record_applied_suggestions(
+    company: QuickBooksCompany,
+    qb_account_id: str,
+    month: str,
+    suggestion_ids: list[str],
+) -> bool:
+    """Persist applied suggestion ids without duplicating existing entries."""
+    if not suggestion_ids:
+        return False
+
+    try:
+        state = AccountReconciliationState.objects.get(
+            company=company, qb_account_id=qb_account_id, month=month
+        )
+    except AccountReconciliationState.DoesNotExist:
+        return False
+
+    applied = list(state.applied_suggestions or [])
+    changed = False
+    for suggestion_id in suggestion_ids:
+        if suggestion_id not in applied:
+            applied.append(suggestion_id)
+            changed = True
+
+    if changed:
+        state.applied_suggestions = applied
+        state.save(update_fields=["applied_suggestions"])
+    return changed
 
 
 def apply_account_reconciliation_suggestions(
@@ -138,6 +168,7 @@ def apply_account_reconciliation_suggestions(
         return result
 
     created_objects: list[dict[str, Any]] = []
+    written_suggestion_ids: list[str] = []
     try:
         for suggestion in not_yet_applied:
             created = qb_writes.apply_suggestion(
@@ -147,6 +178,13 @@ def apply_account_reconciliation_suggestions(
                 private_note=_private_note(month, suggestion.get("description", "")),
             )
             created_objects.append(created)
+            suggestion_id = suggestion.get("id")
+            if suggestion_id:
+                suggestion_id = str(suggestion_id)
+                written_suggestion_ids.append(suggestion_id)
+                _record_applied_suggestions(
+                    company, qb_account_id, month, [suggestion_id]
+                )
     except Exception as exc:  # noqa: BLE001
         logger.exception("apply_suggestion failed for %s/%s", realm_id, qb_account_id)
         result["success"] = False
@@ -165,14 +203,15 @@ def apply_account_reconciliation_suggestions(
 
     run_reconciliation(month, realm_id=realm_id)
 
-    new_ids = {s.get("id") for s in not_yet_applied}
     try:
         state = AccountReconciliationState.objects.get(
             company=company, qb_account_id=qb_account_id, month=month
         )
-        applied = set(state.applied_suggestions or [])
-        applied.update(new_ids)
-        state.applied_suggestions = list(applied)
+        applied = list(state.applied_suggestions or [])
+        for suggestion_id in written_suggestion_ids:
+            if suggestion_id not in applied:
+                applied.append(suggestion_id)
+        state.applied_suggestions = applied
         if state.difference and abs(state.difference) <= BALANCE_TOLERANCE:
             state.status = ReconciliationStatus.RECONCILED
         else:

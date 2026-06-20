@@ -205,3 +205,109 @@ class ApplyAccountReconciliationServiceTests(TestCase):
             month="2026-06",
         )
         self.assertEqual(state.applied_suggestions.count("sug-1"), 1)
+
+    def test_partial_write_failure_records_successful_suggestions(self) -> None:
+        from core.models import AccountReconciliationState
+
+        token = mock.MagicMock(realm_id="realm-a")
+        company = _make_bank_balance(ending_balance=Decimal("-100.00")).company
+        suggestions_result = {
+            "account_name": "Operating Checking",
+            "statement_balance": Decimal("-100.00"),
+            "posted_total": Decimal("-25.00"),
+            "difference": Decimal("-75.00"),
+            "suggestions": [
+                {
+                    "id": "sug-1",
+                    "type": "journal_entry",
+                    "description": "First fix",
+                    "amount": "25.00",
+                    "account_id": "qb-acc-1",
+                    "lines": [],
+                },
+                {
+                    "id": "sug-2",
+                    "type": "journal_entry",
+                    "description": "Second fix",
+                    "amount": "50.00",
+                    "account_id": "qb-acc-1",
+                    "lines": [],
+                },
+            ],
+        }
+        AccountReconciliationState.objects.create(
+            company=company,
+            realm_id="realm-a",
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+            statement_balance=Decimal("-100.00"),
+        )
+
+        with mock.patch(
+            "core.services.reconciliation.reconcile_agent.suggest_account_fixes",
+            return_value=suggestions_result,
+        ), mock.patch(
+            "core.services.reconciliation.qb_tokens.get_active_token", return_value=token
+        ), mock.patch(
+            "core.services.reconciliation.qb_client.build_quickbooks_client"
+        ), mock.patch(
+            "core.services.reconciliation.qb_client.sync_transactions"
+        ) as mock_sync, mock.patch(
+            "core.services.reconciliation.run_reconciliation"
+        ) as mock_run, mock.patch(
+            "core.services.reconciliation.qb_writes.apply_suggestion",
+            side_effect=[
+                {"object_type": "JournalEntry", "id": "je-1", "amount": "25.00"},
+                RuntimeError("second write failed"),
+            ],
+        ):
+            result = apply_account_reconciliation_suggestions(
+                month="2026-06",
+                realm_id="realm-a",
+                qb_account_id="qb-acc-1",
+                suggestion_ids=["sug-1", "sug-2"],
+                dry_run=False,
+            )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["created_objects"][0]["id"], "je-1")
+        mock_sync.assert_not_called()
+        mock_run.assert_not_called()
+
+        state = AccountReconciliationState.objects.get(
+            company=company,
+            qb_account_id="qb-acc-1",
+            month="2026-06",
+        )
+        self.assertEqual(state.applied_suggestions, ["sug-1"])
+
+    def test_post_apply_sync_failure_is_reported_without_losing_success(self) -> None:
+        token = mock.MagicMock(realm_id="realm-a")
+        _make_bank_balance(ending_balance=Decimal("-100.00"))
+        _make_bank_txn(amount=Decimal("-25.00"))
+
+        with mock.patch(
+            "core.services.reconciliation.qb_tokens.get_active_token", return_value=token
+        ), mock.patch(
+            "core.services.reconciliation.qb_client.build_quickbooks_client"
+        ), mock.patch(
+            "core.services.reconciliation.qb_client.sync_transactions",
+            side_effect=RuntimeError("sync failed"),
+        ), mock.patch(
+            "core.services.reconciliation.run_reconciliation"
+        ) as mock_run, mock.patch(
+            "core.services.reconciliation.qb_writes.apply_suggestion",
+            return_value={"object_type": "JournalEntry", "id": "je-1", "amount": "25.00"},
+        ):
+            result = apply_account_reconciliation_suggestions(
+                month="2026-06",
+                realm_id="realm-a",
+                qb_account_id="qb-acc-1",
+                suggestion_ids=["sug-1"],
+                dry_run=False,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sync_error"], "sync failed")
+        self.assertIn("Applied 1 adjustment", result["notice"])
+        mock_run.assert_called_once_with("2026-06", realm_id="realm-a")

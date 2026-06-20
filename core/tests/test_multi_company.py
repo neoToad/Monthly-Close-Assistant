@@ -16,9 +16,8 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client, TestCase
 
-from core.agent.summary import draft_close_summary, gather_inputs
-from core.anomaly.rules import run_anomaly_detection
-from core.bank_feed import generate_bank_feed
+from core.agents.close_summary import draft_close_summary, gather_inputs
+from core.engines import generate_bank_feed, run_anomaly_detection, run_reconciliation
 from core.models import (
     BankTransaction,
     CloseSummary,
@@ -33,7 +32,6 @@ from core.models import (
 )
 from core.quickbooks import client as qb_client
 from core.quickbooks import tokens as qb_tokens
-from core.reconciliation.engine import run_reconciliation
 
 User = get_user_model()
 
@@ -83,7 +81,7 @@ def _config_patch() -> mock._patch:
         "CLOSE_SUMMARY_MODEL": "claude-sonnet-4-6",
     }
     return mock.patch(
-        "core.agent.summary.config",
+        "core.agents.close_summary.config",
         side_effect=lambda key, default="": config_values.get(key, default),
     )
 

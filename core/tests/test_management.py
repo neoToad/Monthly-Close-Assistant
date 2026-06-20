@@ -514,7 +514,7 @@ class CloseSummaryCommandTests(TestCase):
             "OPENAI_API_KEY": "",
         }
         with mock.patch(
-            "core.agent.summary.config",
+            "core.agents.close_summary.config",
             side_effect=lambda key, default="": config_values.get(key, default),
         ):
             call_command("generate_close_summary", "2025-01", "--realm-id", "realm-a", stdout=out)
@@ -529,7 +529,16 @@ class CloseSummaryCommandTests(TestCase):
 
         _make_txn(qb_transaction_id="QB-1", category="Software", amount=Decimal("250.00"))
         out = StringIO()
-        call_command("generate_close_summary", "2025-01", "--realm-id", "realm-a", stdout=out)
+        config_values = {
+            "CLOSE_SUMMARY_PROVIDER": "anthropic",
+            "ANTHROPIC_API_KEY": "",
+            "OPENAI_API_KEY": "",
+        }
+        with mock.patch(
+            "core.agents.close_summary.config",
+            side_effect=lambda key, default="": config_values.get(key, default),
+        ):
+            call_command("generate_close_summary", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertEqual(CloseSummary.objects.count(), 1)
         summary = CloseSummary.objects.first()
         self.assertIn("Software", summary.summary_text)

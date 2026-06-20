@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.agent.summary import draft_close_summary
+from core.services.close_summary import orchestrate_close_summary
 from core.quickbooks import tokens as qb_tokens
 
 
@@ -37,7 +37,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         month = options["month"]
         realm_id = self._resolve_realm_id(options.get("realm_id"))
-        summary = draft_close_summary(month, realm_id=realm_id)
+        summary = orchestrate_close_summary(
+            month, realm_id=realm_id, fetch_qb_gl_totals=True
+        )
 
         self.stdout.write(
             self.style.SUCCESS(f"Close summary drafted for {summary.month} (realm {summary.realm_id})")
