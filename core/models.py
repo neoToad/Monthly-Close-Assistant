@@ -194,12 +194,22 @@ class Transaction(models.Model):
         return f"{self.date} {self.vendor} {self.amount} ({self.source_type})"
 
 
+class BankTransactionSource(models.TextChoices):
+    """How a ``BankTransaction`` row entered the system."""
+
+    SYNTHETIC = "synthetic", "Synthetic (test simulator)"
+    CSV_IMPORT = "csv_import", "CSV import"
+    BANK_FEED_API = "bank_feed_api", "Bank feed API"
+    MANUAL = "manual", "Manual entry"
+
+
 class BankTransaction(models.Model):
-    """The bank-feed side of a transaction, derived from QuickBooks data.
+    """The bank-feed side of a transaction.
 
     Mirrors the ``Transaction`` shape and carries an optional link to the GL
     ``Transaction`` it was matched to during reconciliation (nullable because a bank
-    entry may have no GL match).
+    entry may have no GL match). ``source`` records how the row entered the system
+    (CSV import, bank API, manual entry, or the synthetic test simulator).
     """
 
     company = models.ForeignKey(
@@ -228,6 +238,12 @@ class BankTransaction(models.Model):
     source_type = models.CharField(
         max_length=20, choices=SourceType.choices, blank=True, default=""
     )
+    source = models.CharField(
+        max_length=20,
+        choices=BankTransactionSource.choices,
+        default=BankTransactionSource.MANUAL,
+        help_text="How this bank transaction entered the system.",
+    )
     matched_transaction_id = models.ForeignKey(
         Transaction,
         null=True,
@@ -241,7 +257,7 @@ class BankTransaction(models.Model):
         ordering = ["-date", "vendor"]
 
     def __str__(self) -> str:
-        return f"Bank {self.date} {self.vendor} {self.amount}"
+        return f"Bank {self.date} {self.vendor} {self.amount} ({self.source})"
 
 
 class FlagType(models.TextChoices):

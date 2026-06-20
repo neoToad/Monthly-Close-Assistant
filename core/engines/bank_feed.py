@@ -19,7 +19,14 @@ from django.db import transaction
 
 from core.common.constants import AMOUNT_DELTAS, CASH_LIKE_ACCOUNT_TYPES, DATE_SHIFTS, EXTRA_VENDORS
 from core.common.dates import month_bounds
-from core.models import BankTransaction, QBAccount, QuickBooksCompany, SourceType, Transaction
+from core.models import (
+    BankTransaction,
+    BankTransactionSource,
+    QBAccount,
+    QuickBooksCompany,
+    SourceType,
+    Transaction,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +217,7 @@ def generate_bank_feed(
                 gl_account=row.get("gl_account") or "",
                 qb_transaction_id=row.get("qb_transaction_id") or "",
                 source_type=row.get("source_type") or "",
+                source=BankTransactionSource.SYNTHETIC,
                 matched_transaction_id=None,
             )
         )

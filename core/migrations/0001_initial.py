@@ -57,6 +57,7 @@ class Migration(migrations.Migration):
                 ('gl_account', models.CharField(blank=True, default='', max_length=100)),
                 ('qb_transaction_id', models.CharField(blank=True, db_index=True, help_text='Originating QuickBooks id, if derived from a GL transaction.', max_length=100, null=True)),
                 ('source_type', models.CharField(blank=True, choices=[('Purchase', 'Purchase'), ('Deposit', 'Deposit'), ('JournalEntry', 'Journal Entry'), ('Bill', 'Bill'), ('BillPayment', 'Bill Payment'), ('VendorCredit', 'Vendor Credit')], default='', max_length=20)),
+                ('source', models.CharField(choices=[('synthetic', 'Synthetic (test simulator)'), ('csv_import', 'CSV import'), ('bank_feed_api', 'Bank feed API'), ('manual', 'Manual entry')], default='manual', help_text='How this bank transaction entered the system.', max_length=20)),
                 ('company', models.ForeignKey(help_text='QuickBooks company this bank row belongs to.', on_delete=django.db.models.deletion.CASCADE, related_name='bank_transactions', to='core.quickbookscompany')),
             ],
             options={

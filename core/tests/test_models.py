@@ -18,6 +18,7 @@ from core.models import (
     AccountReconciliationState,
     BankStatementBalance,
     BankTransaction,
+    BankTransactionSource,
     ClientMapping,
     CloseSummary,
     ConnectWiseCompany,
@@ -259,6 +260,39 @@ class BankTransactionTests(TestCase):
         tx.delete()
         bt.refresh_from_db()
         self.assertIsNone(bt.matched_transaction_id)
+
+    def test_default_source_is_manual(self) -> None:
+        bt = BankTransaction.objects.create(
+            date=date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("420.00"),
+            realm_id="realm-a",
+            company=make_company("realm-a"),
+        )
+        self.assertEqual(bt.source, BankTransactionSource.MANUAL)
+
+    def test_source_choices(self) -> None:
+        valid = {
+            BankTransactionSource.SYNTHETIC,
+            BankTransactionSource.CSV_IMPORT,
+            BankTransactionSource.BANK_FEED_API,
+            BankTransactionSource.MANUAL,
+        }
+        self.assertEqual(
+            {choice[0] for choice in BankTransactionSource.choices},
+            {c.value for c in valid},
+        )
+
+    def test_str_includes_source(self) -> None:
+        bt = BankTransaction.objects.create(
+            date=date(2025, 1, 15),
+            vendor="Acme Corp",
+            amount=Decimal("420.00"),
+            source=BankTransactionSource.CSV_IMPORT,
+            realm_id="realm-a",
+            company=make_company("realm-a"),
+        )
+        self.assertIn("csv_import", str(bt))
 
 
 class FlagTests(TestCase):

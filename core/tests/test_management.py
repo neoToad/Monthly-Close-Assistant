@@ -16,6 +16,7 @@ from django.test import TestCase
 from core.models import (
     BankStatementBalance,
     BankTransaction,
+    BankTransactionSource,
     Flag,
     FlagType,
     QBAccount,
@@ -277,6 +278,15 @@ class GenerateBankFeedCommandTests(TestCase):
         call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a", stdout=out)
         self.assertIn("no transactions", out.getvalue().lower())
         self.assertEqual(BankTransaction.objects.count(), 0)
+
+    def test_synthetic_generator_sets_source(self) -> None:
+        _make_txn(qb_transaction_id="QB-1")
+        call_command("generate_bank_feed", "2025-01", "--realm-id", "realm-a")
+        self.assertGreater(BankTransaction.objects.count(), 0)
+        self.assertEqual(
+            set(BankTransaction.objects.values_list("source", flat=True)),
+            {BankTransactionSource.SYNTHETIC},
+        )
 
     def test_cash_only_excludes_bill_records(self) -> None:
         _make_txn(qb_transaction_id="QB-P", source_type=SourceType.PURCHASE)
