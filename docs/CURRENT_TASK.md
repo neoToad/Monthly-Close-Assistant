@@ -1,15 +1,14 @@
 # Current Task
 
-ConnectWise Step 3 — Synthetic ConnectWise feed
+Step 3 — Synthetic ConnectWise feed — COMPLETE and verified.
 
-Actively working on:
-- Create JSON fixtures under `core/fixtures/connectwise_scenarios/` for hourly leakage, flat-fee profitable, flat-fee margin erosion, flat-fee loss, missing mapping, and mixed scenarios.
-- Implement `core/engines/connectwise_feed.py::generate_connectwise_feed(month, realm_id, scenario, force=False, seed=None)`.
-- Add `core/management/commands/generate_connectwise_feed.py`.
-- Write failing tests first in `core/tests/test_connectwise_feed.py`.
+Status:
+- All six JSON fixtures created under `core/fixtures/connectwise_scenarios/`.
+- `core/engines/connectwise_feed.py::generate_connectwise_feed` implemented with idempotent upserts, `--force`, and `--seed` support.
+- `core/management/commands/generate_connectwise_feed.py` added.
+- `core/tests/test_connectwise_feed.py` covers scenario counts, flat-fee mappings, missing mappings, mixed scenarios, force/idempotency, and seed reproducibility (9 tests passing).
 
-Blockers or decisions:
-- None.
+Paused as requested; not starting Step 4.
 
-Next step:
-- Write failing tests, then implement fixtures and the generator.
+Next step when work resumes:
+- Step 4 — ConnectWise reconciliation engine: implement `core/engines/connectwise_reconciliation.py::run_connectwise_reconciliation(month, realm_id=None)` with unbilled, margin, and missing-mapping flags, plus tests in `core/tests/test_connectwise_reconciliation.py`.
