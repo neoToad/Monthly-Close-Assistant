@@ -2,7 +2,7 @@
 
 Implement `docs/plans/seed_demo_msp_data_plan.md` — add a management command that seeds the local database with realistic MSP demo data for dashboard and reconciliation demos.
 
-**Status:** Complete — awaiting final review / commit
+**Status:** Complete and committed (`025c6d6`)
 
 **What was built:**
 - Added `core/fixtures/msp_demo_data.py` with the chart of accounts, customers, vendors, and transaction fixtures for **Next Level Networks Demo**.
@@ -16,4 +16,4 @@ Implement `docs/plans/seed_demo_msp_data_plan.md` — add a management command t
 - `docker compose exec web python manage.py makemigrations --check --dry-run` — no changes.
 
 **Next step:**
-- Commit the changes with the planned commit message.
+- Pick the next TODO item or plan.
