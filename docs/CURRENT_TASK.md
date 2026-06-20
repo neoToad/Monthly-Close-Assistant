@@ -1,23 +1,27 @@
 # Current Task
 
-Bank feed independence — Step 4: add independent simulator scenarios to the bank feed generator.
+Bank feed independence — COMPLETE.
 
 Status:
-- Implementing `docs/plans/independent_bank_feed_plan.md` on `feature/close-assistant-build`.
-- Step 1 committed: `BankTransaction.source` field and synthetic tracking.
-- Step 2 committed: CSV import engine.
-- Step 3 committed: `import_bank_feed` command, dashboard view, relabeled synthetic button,
-  and CSV upload form.
+- All four steps from `docs/plans/independent_bank_feed_plan.md` are implemented
+  and verified on `feature/close-assistant-build`.
+- Final verification:
+  - `docker compose exec web python manage.py makemigrations --check --dry-run` — no changes.
+  - `docker compose exec web python manage.py test -v 2` — **379 tests pass**.
 
-Active work:
-- Create `core/fixtures/` package and `core/fixtures/bank_feed_scenarios/independent_default.json`.
-- Extend `generate_bank_feed` in `core/engines/bank_feed.py` with `scenario` and `scenario_file` arguments.
-  - `derived` (default): existing behavior.
-  - `independent`: generate rows from the fixture, randomize dates within the month,
-    apply discrepancies, mark `source=synthetic`.
-- Update `core/management/commands/generate_bank_feed.py` with `--scenario` and `--scenario-file`.
-- Add command tests for `independent` and custom scenario files.
+Completed deliverables:
+- Step 1: `BankTransaction.source` field with `BankTransactionSource` choices; synthetic
+  generator marks rows as `synthetic`; migration and model/command tests updated.
+- Step 2: CSV import engine `core/engines/bank_feed_import.py` with date/amount validation,
+  month containment, idempotency, and `force` overwrite.
+- Step 3: `import_bank_feed` management command, dashboard view, URL, CSV upload form,
+  relabeled synthetic generator button, and view/command tests.
+- Step 4: Independent simulator scenario fixture, `--scenario` / `--scenario-file` support
+  in `generate_bank_feed`, and command tests.
+- Step 5: `docs/TODO.md`, `docs/CHANGELOG.md`, and this file updated.
+- Fix: added `core/migrations/0002_banktransaction_source.py` to safely add the
+  `source` column on databases that had already applied the original squashed
+  `0001_initial` migration.
 
-Next step:
-- Run the full test suite, then commit.
-- Step 5 will update docs (TODO, CURRENT_TASK, CHANGELOG) and run final verification.
+Next work:
+- No further bank-feed independence work in this plan. Pick the next TODO item or plan.

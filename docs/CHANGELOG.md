@@ -39,3 +39,10 @@ Archived changelogs live in `docs/changelogs/`.
 - Independent scenario ignores GL transactions, randomizes dates within the month, applies discrepancies, and marks rows `source=synthetic`.
 - Updated `core/management/commands/generate_bank_feed.py` with `--scenario` and `--scenario-file` arguments and scenario-labeled output.
 - Added command tests for derived, independent, and custom scenario fixtures.
+
+### Step 5 — `docs: update TODO, CURRENT_TASK, and CHANGELOG for bank feed independence`
+- Added Bank feed independence section to `docs/TODO.md`.
+- Marked `CURRENT_TASK.md` as complete with final verification (379 tests pass).
+- Migration fix: added `core/migrations/0002_banktransaction_source.py` so existing
+  databases that applied the original squashed `0001_initial` migration safely gain
+  the `source` column without data loss.
